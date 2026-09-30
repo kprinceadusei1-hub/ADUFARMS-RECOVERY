@@ -2609,7 +2609,7 @@ def invoice_pdf(transaction_id):
         try:
             with PILImage.open(logo_path) as source_logo:
                 watermark_logo = source_logo.convert("RGBA")
-                watermark_logo.thumbnail((900, 700), PILImage.Resampling.LANCZOS)
+                watermark_logo.thumbnail((480, 380), PILImage.Resampling.LANCZOS)
                 watermark_logo.putalpha(watermark_logo.getchannel("A").point(lambda value: int(value * 0.12)))
                 watermark_logo.save(watermark_buffer, format="PNG", optimize=True, compress_level=9)
             watermark_buffer.seek(0)

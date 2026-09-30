@@ -1,3 +1,4 @@
+import re
 import io
 import os
 import sqlite3
@@ -250,7 +251,7 @@ def test_invoice_pdf_stays_on_one_a4_page(client):
     response = client.get("/invoice/ADU-SAL-PDF-ONE/pdf?inline=1")
     assert response.status_code == 200
     assert response.mimetype == "application/pdf"
-    assert response.data.count(b"/Type /Page") == 1
+    assert len(re.findall(rb"/Type /Page(?![a-z])", response.data)) == 1
 
 
 def test_customer_creation_rejects_duplicate_normalized_identity(client):
