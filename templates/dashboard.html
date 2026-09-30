@@ -9,7 +9,7 @@
 
 
 
-<div class="dx">
+<div class="dx dx-dash">
   <!-- Header -->
   <section class="dx-header" data-hero-image="{{ url_for('static', filename=dashboard_images.hero) }}">
     <div class="dx-header-copy">
@@ -89,6 +89,14 @@
         <li class="dx-empty"><i class="bi bi-lightbulb"></i> Insights appear here as soon as you record purchases, sales and payments.</li>
         {% endfor %}
       </ul>
+      {% if can.sales %}
+      <dl class="dx-pulse" id="dxPulse" hidden>
+        <div><dt>Best day</dt><dd id="pulseBest">-<small></small></dd></div>
+        <div><dt>Daily average</dt><dd id="pulseAvg">-<small></small></dd></div>
+        <div><dt>Active days</dt><dd id="pulseActive">-<small></small></dd></div>
+        <div><dt>Cash vs purchases</dt><dd id="pulseNet">-<small></small></dd></div>
+      </dl>
+      {% endif %}
     </div>
   </section>
 
@@ -269,11 +277,11 @@
   let trend, methods;
   if (trendCanvas) {
     const datasets = [];
-    if (data.showSales) datasets.push({ label: 'Sales', data: data.series.revenue, borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.14)', fill: true, tension: 0.35, borderWidth: 2.5, pointRadius: 2, pointHoverRadius: 5 });
-    if (data.showCollections) datasets.push({ label: 'Collected', data: data.series.collected, borderColor: '#2563eb', tension: 0.35, borderWidth: 2, pointRadius: 2, pointHoverRadius: 5 });
-    if (data.showPurchases) datasets.push({ label: 'Purchases', data: data.series.purchases, borderColor: '#d97706', borderDash: [5, 4], tension: 0.35, borderWidth: 1.75, pointRadius: 0, pointHoverRadius: 4 });
+    if (data.showSales) datasets.push({ type: 'bar', label: 'Sales', data: data.series.revenue, backgroundColor: (ctx) => { const a = ctx.chart.chartArea; if (!a) return '#16a34a'; const g = ctx.chart.ctx.createLinearGradient(0, a.top, 0, a.bottom); g.addColorStop(0, '#16a34a'); g.addColorStop(1, 'rgba(22,163,74,0.6)'); return g; }, borderRadius: 6, borderSkipped: false, maxBarThickness: 28, order: 3 });
+    if (data.showCollections) datasets.push({ label: 'Collected', data: data.series.collected, type: 'line', borderColor: '#2563eb', backgroundColor: '#2563eb', tension: 0.3, borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 6, order: 1 });
+    if (data.showPurchases) datasets.push({ label: 'Purchases', data: data.series.purchases, type: 'line', borderColor: 'rgba(217,119,6,0.75)', borderDash: [6, 4], tension: 0.3, borderWidth: 1.75, pointRadius: 0, pointHoverRadius: 5, order: 2 });
     trend = new Chart(trendCanvas, {
-      type: 'line',
+      type: 'bar',
       data: { labels: data.series.labels, datasets },
       options: {
         responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
@@ -293,6 +301,39 @@
       options: { responsive: true, maintainAspectRatio: false, cutout: '68%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.label + ': ' + gh(c.parsed) } } } }
     });
     document.querySelectorAll('#dxMethodsLegend i[data-i]').forEach(el => { el.style.background = palette[Number(el.dataset.i) % palette.length]; });
+  }
+
+  const pulse = document.getElementById('dxPulse');
+  if (pulse && data.showSales) {
+    const rev = data.series.revenue || [], labels = data.series.labels || [];
+    const total = rev.reduce((a, b) => a + b, 0), active = rev.filter(v => v > 0).length;
+    if (total > 0) {
+      const bi = rev.indexOf(Math.max(...rev));
+      const set = (id, v, sub) => { const el = document.getElementById(id); el.firstChild.nodeValue = v; el.querySelector('small').textContent = sub; };
+      set('pulseBest', gh(rev[bi]), labels[bi]);
+      set('pulseAvg', gh(total / Math.max(rev.length, 1)), 'per ' + data.series.granularity);
+      set('pulseActive', active + ' of ' + rev.length, 'with sales');
+      const cash = (data.series.collected || []).reduce((a, b) => a + b, 0), buy = (data.series.purchases || []).reduce((a, b) => a + b, 0);
+      set('pulseNet', (cash - buy >= 0 ? '+' : '-') + gh(Math.abs(cash - buy)), cash - buy >= 0 ? 'collected exceeds buying' : 'buying exceeds collected');
+      pulse.hidden = false;
+    }
+  }
+
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.querySelectorAll('.dx-kpi-value').forEach(el => {
+      const text = el.textContent.trim(), m = text.match(/-?[\d,]+(?:\.\d+)?/);
+      if (!m) return;
+      const target = parseFloat(m[0].replace(/,/g, '')), dec = (m[0].split('.')[1] || '').length;
+      const pre = text.slice(0, m.index), post = text.slice(m.index + m[0].length);
+      if (!isFinite(target) || target === 0) return;
+      const t0 = performance.now(), dur = 900;
+      const tick = now => {
+        const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+        el.textContent = pre + (target * e).toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec }) + post;
+        if (k < 1) requestAnimationFrame(tick); else el.textContent = text;
+      };
+      requestAnimationFrame(tick);
+    });
   }
 
   const themeButton = document.getElementById('themeToggle');

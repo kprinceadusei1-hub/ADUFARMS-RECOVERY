@@ -240,7 +240,7 @@ def build_dashboard(conn, range_key, today, money, cogs, stock_kg, low_stock_kg)
     recent_sales = conn.execute(
         """SELECT s.sales_id, s.sale_date, c.name, s.quantity_kg, s.total_sale,
                   COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.transaction_id=s.transaction_id AND p.deleted=0),0) paid
-           FROM sales s JOIN customers c ON c.id=s.customer_id WHERE s.deleted=0 ORDER BY s.sale_date DESC, s.id DESC LIMIT 6""").fetchall()
+           FROM sales s JOIN customers c ON c.id=s.customer_id WHERE s.deleted=0 ORDER BY s.sale_date DESC, s.id DESC LIMIT 8""").fetchall()
     recent_payments = conn.execute(
         """SELECT p.payment_id, p.payment_date, p.amount, p.payment_method, c.name customer_name
            FROM payments p JOIN sales s ON s.transaction_id=p.transaction_id JOIN customers c ON c.id=s.customer_id
