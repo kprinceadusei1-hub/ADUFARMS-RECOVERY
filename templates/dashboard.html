@@ -48,8 +48,9 @@
     <div class="kpi-exec-body">
       <div class="kpi-exec-title">Total Customers</div>
       <div class="kpi-exec-val">{{ stats.customers }}</div>
-      <div class="kpi-exec-trend text-success">
-        <i class="bi bi-arrow-up-short fs-6"></i> 12% <span class="text-muted fw-normal ms-1">from last month</span>
+      {% set tr = trends.customers %}
+      <div class="kpi-exec-trend {{ 'text-success' if tr is not none and tr >= 0 else 'text-danger' if tr is not none else 'text-muted' }}">
+        {% if tr is none %}No prior-month data{% else %}<i class="bi bi-arrow-{{ 'up' if tr >= 0 else 'down' }}-short fs-6"></i> {{ tr|abs }}% <span class="text-muted fw-normal ms-1">vs last month</span>{% endif %}
       </div>
     </div>
   </article>
@@ -62,8 +63,9 @@
     <div class="kpi-exec-body">
       <div class="kpi-exec-title">Total Sales</div>
       <div class="kpi-exec-val">{{ stats.transactions }}</div>
-      <div class="kpi-exec-trend text-success">
-        <i class="bi bi-arrow-up-short fs-6"></i> 18% <span class="text-muted fw-normal ms-1">from last month</span>
+      {% set tr = trends.transactions %}
+      <div class="kpi-exec-trend {{ 'text-success' if tr is not none and tr >= 0 else 'text-danger' if tr is not none else 'text-muted' }}">
+        {% if tr is none %}No prior-month data{% else %}<i class="bi bi-arrow-{{ 'up' if tr >= 0 else 'down' }}-short fs-6"></i> {{ tr|abs }}% <span class="text-muted fw-normal ms-1">vs last month</span>{% endif %}
       </div>
     </div>
   </article>
@@ -76,8 +78,9 @@
     <div class="kpi-exec-body">
       <div class="kpi-exec-title">Total Revenue</div>
       <div class="kpi-exec-val">{{ stats.sales|money }}</div>
-      <div class="kpi-exec-trend text-success">
-        <i class="bi bi-arrow-up-short fs-6"></i> 22% <span class="text-muted fw-normal ms-1">from last month</span>
+      {% set tr = trends.revenue %}
+      <div class="kpi-exec-trend {{ 'text-success' if tr is not none and tr >= 0 else 'text-danger' if tr is not none else 'text-muted' }}">
+        {% if tr is none %}No prior-month data{% else %}<i class="bi bi-arrow-{{ 'up' if tr >= 0 else 'down' }}-short fs-6"></i> {{ tr|abs }}% <span class="text-muted fw-normal ms-1">vs last month</span>{% endif %}
       </div>
     </div>
   </article>
@@ -108,7 +111,7 @@
             <i class="bi bi-graph-up text-success fs-5"></i>
             <h5 class="mb-0">Sales Overview</h5>
           </div>
-          <span class="badge bg-light text-dark border px-2 py-1">This Month</span>
+          <span class="badge bg-light text-dark border px-2 py-1">Last 6 months</span>
         </div>
         <div class="chart-box" style="height:240px;">
           <canvas id="overviewChart"></canvas>
@@ -124,29 +127,25 @@
         <div class="panel-title d-flex justify-content-between align-items-center mb-3">
           <div class="d-flex align-items-center gap-2">
             <i class="bi bi-pie-chart text-primary fs-5"></i>
-            <h5 class="mb-0">Sales by Product</h5>
+            <h5 class="mb-0">Payment Status</h5>
           </div>
-          <span class="badge bg-light text-dark border px-2 py-1">Distribution</span>
+          <span class="badge bg-light text-dark border px-2 py-1">All sales</span>
         </div>
         <div style="height:170px; position:relative;" class="d-flex align-items-center justify-content-center">
           <canvas id="productChart"></canvas>
         </div>
         <div class="mt-3 small">
           <div class="d-flex justify-content-between py-1 border-bottom">
-            <span><i class="bi bi-circle-fill text-success me-1 small"></i> Maize Supply</span>
-            <strong>68%</strong>
+            <span><i class="bi bi-circle-fill text-success me-1 small"></i> Paid</span>
+            <strong>{{ stats.paid }}</strong>
           </div>
           <div class="d-flex justify-content-between py-1 border-bottom">
-            <span><i class="bi bi-circle-fill text-warning me-1 small"></i> Maize Seeds</span>
-            <strong>12%</strong>
-          </div>
-          <div class="d-flex justify-content-between py-1 border-bottom">
-            <span><i class="bi bi-circle-fill text-primary me-1 small"></i> Animal Feed</span>
-            <strong>8%</strong>
+            <span><i class="bi bi-circle-fill text-warning me-1 small"></i> Part payment</span>
+            <strong>{{ stats.part }}</strong>
           </div>
           <div class="d-flex justify-content-between py-1">
-            <span><i class="bi bi-circle-fill text-secondary me-1 small"></i> Other Products</span>
-            <strong>12%</strong>
+            <span><i class="bi bi-circle-fill text-danger me-1 small"></i> Unpaid</span>
+            <strong>{{ stats.unpaid }}</strong>
           </div>
         </div>
       </div>
@@ -554,14 +553,14 @@ if (inventorySpotlight && inventorySpotlight.dataset.inventoryImage) {
 }
 
 const chartDataEl = document.getElementById('dashboardChartData');
-const rawMonthlySales = chartDataEl && chartDataEl.dataset.monthlySales ? JSON.parse(chartDataEl.dataset.monthlySales) : [];
-const rawMonthlyPurchases = chartDataEl && chartDataEl.dataset.monthlyPurchases ? JSON.parse(chartDataEl.dataset.monthlyPurchases) : [];
+const series = chartDataEl && chartDataEl.dataset.series ? JSON.parse(chartDataEl.dataset.series) : {months: [], revenue: [], cost: []};
+const statusCounts = chartDataEl && chartDataEl.dataset.status ? JSON.parse(chartDataEl.dataset.status) : [0, 0, 0];
 
 const overviewCanvas = document.getElementById('overviewChart');
-if (overviewCanvas) {
-  const chartLabels = rawMonthlySales.length ? rawMonthlySales.map(item => item.month) : ['Sep 1', 'Sep 5', 'Sep 10', 'Sep 15', 'Sep 20', 'Sep 25', 'Sep 30'];
-  const salesData = rawMonthlySales.length ? rawMonthlySales.map(item => Number(item.revenue || 0)) : [5000, 8000, 6500, 11000, 7500, 9200, 14000];
-  const purchaseData = rawMonthlyPurchases.length ? rawMonthlyPurchases.map(item => Number(item.cost || 0)) : [4200, 5800, 7000, 6800, 7600, 9500, 11000];
+if (overviewCanvas && typeof Chart !== 'undefined') {
+  const chartLabels = series.months;
+  const salesData = series.revenue;
+  const purchaseData = series.cost;
 
   new Chart(overviewCanvas, {
     type: 'line',
@@ -614,14 +613,14 @@ if (overviewCanvas) {
 }
 
 const productCanvas = document.getElementById('productChart');
-if (productCanvas) {
+if (productCanvas && typeof Chart !== 'undefined') {
   new Chart(productCanvas, {
     type: 'doughnut',
     data: {
-      labels: ['Maize Supply', 'Maize Seeds', 'Animal Feed', 'Other Products'],
+      labels: ['Paid', 'Part payment', 'Unpaid'],
       datasets: [{
-        data: [68, 12, 8, 12],
-        backgroundColor: ['#16a34a', '#f59e0b', '#2563eb', '#94a3b8'],
+        data: statusCounts.some(Boolean) ? statusCounts : [0, 0, 0],
+        backgroundColor: ['#16a34a', '#f59e0b', '#dc2626'],
         borderWidth: 2,
         borderColor: '#ffffff'
       }]
@@ -637,5 +636,5 @@ if (productCanvas) {
   });
 }
 </script>
-<div id="dashboardChartData" data-monthly-sales='{{ monthly_sales|tojson|safe }}' data-monthly-purchases='{{ monthly_purchases|tojson|safe }}' hidden></div>
+<div id="dashboardChartData" data-series='{{ chart_series|tojson|safe }}' data-status='{{ [stats.paid, stats.part, stats.unpaid]|tojson|safe }}' hidden></div>
 {% endblock %}

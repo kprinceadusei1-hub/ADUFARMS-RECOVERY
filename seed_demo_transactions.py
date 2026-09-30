@@ -1,7 +1,8 @@
+import os
 from datetime import date, timedelta
 import sqlite3
 
-DB_PATH = r"c:\Users\VOBISSNOC\OneDrive - Vobiss Solutions limited\Desktop\PRINCE\ADUFARMS-RECOVERY\adufarms.db"
+DB_PATH = os.environ.get("DATABASE_PATH", "adufarms.db")
 
 
 def main():

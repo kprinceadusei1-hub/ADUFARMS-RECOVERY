@@ -402,3 +402,18 @@ def test_backup_restore_verifies_and_preserves_safety_copy(tmp_path, monkeypatch
     conn.close()
     assert safety_backup.exists()
     backup_service.verify_database(safety_backup)
+
+
+def test_period_helpers():
+    assert application.pct_change(150, 100) == 50
+    assert application.pct_change(50, 100) == -50
+    assert application.pct_change(10, 0) is None
+    months = application.month_range(6)
+    assert len(months) == 6 and months == sorted(months)
+
+
+def test_dashboard_shows_no_invented_figures(client):
+    login_session(client)
+    html = client.get("/dashboard").get_data(as_text=True)
+    assert "Animal Feed" not in html and "Maize Seeds" not in html
+    assert "12% <span" not in html

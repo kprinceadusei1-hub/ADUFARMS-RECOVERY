@@ -1418,6 +1418,29 @@ def logout():
     return redirect(url_for("login"))
 
 
+def month_range(count):
+    """Return the last `count` calendar months as 'YYYY-MM', oldest first."""
+    year, month = date.today().year, date.today().month
+    months = []
+    for _ in range(count):
+        months.append(f"{year:04d}-{month:02d}")
+        month -= 1
+        if month == 0:
+            year, month = year - 1, 12
+    return months[::-1]
+
+
+def month_label(ym):
+    return date(int(ym[:4]), int(ym[5:7]), 1).strftime("%b %Y")
+
+
+def pct_change(current, previous):
+    """Percentage change vs the previous period; None when there is no baseline."""
+    if not previous:
+        return None
+    return round((current - previous) / previous * 100)
+
+
 @app.route("/dashboard")
 @login_required
 @require_permission("view_dashboard")
@@ -1535,6 +1558,27 @@ def dashboard():
         COALESCE(SUM(quantity_kg),0) quantity FROM sales WHERE deleted=0 GROUP BY month ORDER BY month DESC LIMIT 6""").fetchall()]
     monthly_purchases = [dict(row) for row in conn.execute("""SELECT substr(purchase_date,1,7) month,COALESCE(SUM(total_cost),0) cost,
         COALESCE(SUM(quantity_received_kg),0) quantity FROM purchases WHERE deleted=0 GROUP BY month ORDER BY month DESC LIMIT 6""").fetchall()]
+    trend_rows = conn.execute("""SELECT substr(sale_date,1,7) month, COUNT(*) n, COALESCE(SUM(total_sale),0) revenue
+        FROM sales WHERE deleted=0 GROUP BY month""").fetchall()
+    new_customer_rows = conn.execute("""SELECT substr(created_at,1,7) month, COUNT(*) n FROM customers
+        WHERE active=1 GROUP BY month""").fetchall()
+    chart_months = month_range(6)
+    sales_by_month = {r["month"]: r for r in trend_rows}
+    cost_by_month = {r["month"]: float(r["cost"]) for r in monthly_purchases}
+    chart_series = dict(
+        months=[month_label(m) for m in chart_months],
+        revenue=[float(sales_by_month[m]["revenue"]) if m in sales_by_month else 0.0 for m in chart_months],
+        cost=[cost_by_month.get(m, 0.0) for m in chart_months],
+    )
+    cur_m, prev_m = chart_months[-1], chart_months[-2]
+    def _cell(m, key):
+        return float(sales_by_month[m][key]) if m in sales_by_month else 0.0
+    trends = dict(
+        customers=pct_change(next((r["n"] for r in new_customer_rows if r["month"] == cur_m), 0),
+                             next((r["n"] for r in new_customer_rows if r["month"] == prev_m), 0)),
+        transactions=pct_change(_cell(cur_m, "n"), _cell(prev_m, "n")),
+        revenue=pct_change(_cell(cur_m, "revenue"), _cell(prev_m, "revenue")),
+    )
     supplier_count = int(summary_row["supplier_count"] or 0)
     today_sales = float(summary_row["today_sales"] or 0)
     today_payments = float(summary_row["today_payments"] or 0)
@@ -1566,7 +1610,7 @@ def dashboard():
                            recent_purchases=recent_purchases, recent_payments=recent_payments,
                            recent_invoices=recent_invoices, outstanding_customers=outstanding_customers,
                            recent_customers=recent_customers,
-                           monthly_sales=monthly_sales, monthly_purchases=monthly_purchases,
+                           chart_series=chart_series, trends=trends,
                            dashboard_images=dashboard_images,
                            dashboard_image_slots=DASHBOARD_IMAGE_SLOT_ORDER)
 

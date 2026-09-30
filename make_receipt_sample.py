@@ -1,7 +1,8 @@
+import os
 import sqlite3
 from datetime import date
 
-DB_PATH = "adufarms.db"
+DB_PATH = os.environ.get("DATABASE_PATH", "adufarms.db")
 
 def main():
     conn = sqlite3.connect(DB_PATH)

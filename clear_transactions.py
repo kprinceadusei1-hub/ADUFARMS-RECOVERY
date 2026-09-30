@@ -1,6 +1,7 @@
+import os
 import sqlite3
 
-DB_PATH = "adufarms.db"
+DB_PATH = os.environ.get("DATABASE_PATH", "adufarms.db")
 
 TABLES_TO_CLEAR = [
     "payments",
