@@ -11,7 +11,7 @@
 /* Header */
 .dx-header { position:relative; overflow:hidden; display:flex; flex-wrap:wrap; gap:18px; justify-content:space-between; align-items:flex-end;
   padding:26px 28px; border-radius:18px; color:#fff;
-  background:linear-gradient(110deg, rgba(8,36,22,.94) 0%, rgba(14,58,36,.72) 42%, rgba(14,58,36,.12) 100%), var(--dx-hero, none) center/cover, #0d3a24;
+  background:linear-gradient(110deg, rgba(8,36,22,.94) 0%, rgba(14,58,36,.86) 55%, rgba(14,58,36,.55) 100%), var(--dx-hero, none) center/cover, #0d3a24;
   box-shadow:0 12px 30px rgba(12,46,29,.22); }
 .dx-header h2 { margin:6px 0 4px; font-size:clamp(1.5rem, 2.4vw, 2.1rem); font-weight:800; letter-spacing:-.01em; color:#fff; }
 .dx-header p { margin:0; color:rgba(255,255,255,.82); font-size:.95rem; }

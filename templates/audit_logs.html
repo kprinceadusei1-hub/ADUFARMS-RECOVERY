@@ -190,7 +190,7 @@
 
 <section id="tab-insights" class="dx-panel" hidden>
 <div class="dx">
-  {{ period_header(ai, 'audit_logs', 'Activity insights', 'Who is doing what, what changed, and anything that looks unusual.', '#insights', 'audit_logs') }}
+  {{ period_header(ai, 'audit_logs', 'Activity insights', 'Who is doing what, what changed, and anything that looks unusual.', '#insights') }}
   {% if not ai.has_data %}<section class="dx-card"><p class="dx-empty"><i class="bi bi-journal-text"></i> No activity recorded in this period.</p></section>{% endif %}
   <section class="dx-kpis dx-kpis-wide">
     {{ stat('blue', 'activity', 'Events', ai.total, ai.active_users ~ (' active user' if ai.active_users == 1 else ' active users')) }}

@@ -381,7 +381,7 @@
 <!-- ============ ANALYTICS ============ -->
 <section id="tab-analytics" class="dx-panel" hidden>
 <div class="dx">
-  {{ period_header(pa, 'payments', 'Collections analytics', 'How fast money comes in, how it arrives, and who is slow to pay.', '#analytics', 'payments') }}
+  {{ period_header(pa, 'payments', 'Collections analytics', 'How fast money comes in, how it arrives, and who is slow to pay.', '#analytics') }}
   {% set k = pa.kpis %}
   {% if not pa.has_data %}<section class="dx-card"><p class="dx-empty"><i class="bi bi-wallet2"></i> No payments in this period. Record one, or pick a wider period.</p></section>{% endif %}
 

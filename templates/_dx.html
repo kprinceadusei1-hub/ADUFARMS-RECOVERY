@@ -18,8 +18,8 @@
 
 {# Page header with period picker. `p` is any analytics dict carrying period_meta() fields. Import `with context`.
    Put extra buttons (export, print) inside {% call period_header(...) %}...{% endcall %}. #}
-{% macro period_header(p, endpoint, title, subtitle, anchor='', art='analytics') -%}
-<section class="dx-header" style="--dx-hero:url('{{ url_for('static', filename='images/ghana/' ~ art ~ '.svg') }}')">
+{% macro period_header(p, endpoint, title, subtitle, anchor='') -%}
+<section class="dx-header">
   <div class="dx-header-copy">
     <span class="dx-eyebrow"><i class="bi bi-calendar3"></i> {{ p.period_text }}{% if p.compare_text %} <em>· {{ p.compare_text }}</em>{% endif %}</span>
     <h2>{{ title }}</h2>

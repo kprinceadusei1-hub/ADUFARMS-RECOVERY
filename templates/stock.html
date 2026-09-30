@@ -118,7 +118,7 @@
 <!-- ============ ANALYTICS ============ -->
 <section id="tab-analytics" class="dx-panel" hidden>
 <div class="dx">
-  {{ period_header(si, 'stock', 'Inventory analytics', 'How stock flows in and out, how fast it turns over, and what is sitting too long.', '#analytics', 'stock') }}
+  {{ period_header(si, 'stock', 'Inventory analytics', 'How stock flows in and out, how fast it turns over, and what is sitting too long.', '#analytics') }}
   {% set k = si.kpis %}
   {% if not si.has_data %}<section class="dx-card"><p class="dx-empty"><i class="bi bi-boxes"></i> No purchases or sales in this period.</p></section>{% endif %}
   <section class="dx-kpis dx-kpis-wide">
