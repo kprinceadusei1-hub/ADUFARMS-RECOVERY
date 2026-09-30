@@ -1,10 +1,35 @@
 {% extends "base.html" %}
 {% block title %}Notifications – ADUFARMS{% endblock %}
 {% block content %}
-<div class="dashboard-heading"><div><span class="eyebrow">ALERTS</span><h2>Notification center ({{ items|length }})</h2><p>Real system data: stock, balances, recent activity. Current stock: <strong>{{ "{:,.2f}".format(stock) }} KG</strong>.</p></div><a class="btn btn-outline-secondary btn-sm" href="{{ url_for('notifications', mark_read=1) }}"><i class="bi bi-check2-all"></i> Mark all as read</a></div>
-<div class="card"><div class="card-body">
-{% for n in items %}
-<div class="d-flex gap-3 align-items-start border-bottom py-3"><span class="notification-icon notification-{{ n.kind }}"><i class="bi bi-{{ n.icon }}"></i></span><div class="flex-grow-1"><strong>{{ n.title }}</strong><div class="text-muted small">{{ n.body }}</div><small class="text-muted">{{ n.time }}</small></div><span class="status-badge {% if n.kind=='danger' %}status-unpaid{% elif n.kind=='warning' %}status-part{% else %}status-pending{% endif %}">{{ n.kind|upper }}</span></div>
-{% else %}<div class="empty-state"><i class="bi bi-bell"></i>All caught up. No notifications.</div>{% endfor %}
-</div></div>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='dx-11') }}">
+<div class="dashboard-heading">
+  <div>
+    <span class="eyebrow">ALERTS</span>
+    <h2>Notification center ({{ items|length }})</h2>
+    <p>One alert per real issue, most urgent first. Current stock: <strong>{{ "{:,.2f}".format(stock) }} KG</strong>.</p>
+  </div>
+  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('notifications', mark_read=1) }}"><i class="bi bi-check2-all"></i> Mark all as read</a>
+</div>
+
+<div class="dx-alertbar">
+  <span class="dx-pill dx-pill-bad">{{ counts.danger }} urgent</span>
+  <span class="dx-pill dx-pill-warn">{{ counts.warning }} need attention</span>
+  <span class="dx-pill dx-pill-info">{{ counts.info }} for your information</span>
+  {% if read_at %}<span class="dx-muted">Marked read {{ read_at }}</span>{% endif %}
+</div>
+
+<div class="dx-alerts">
+  {% for n in items %}
+  <article class="dx-alert-card dx-alert-{{ n.kind }}">
+    <span class="dx-alert-icon"><i class="bi bi-{{ n.icon }}"></i></span>
+    <div class="dx-alert-body">
+      <strong>{{ n.title }}</strong>
+      <p>{{ n.body }}</p>
+    </div>
+    {% if n.href %}<a class="dx-btn" href="{{ url_for(n.href) }}">{{ n.label }} <i class="bi bi-arrow-right"></i></a>{% endif %}
+  </article>
+  {% else %}
+  <div class="dx-card"><p class="dx-empty"><i class="bi bi-check-circle"></i> All caught up. Nothing needs your attention right now.</p></div>
+  {% endfor %}
+</div>
 {% endblock %}

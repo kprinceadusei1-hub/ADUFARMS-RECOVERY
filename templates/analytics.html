@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+{% block title %}Analytics - ADUFARMS{% endblock %}
+{% block content %}
+{% from "_dx.html" import chip, stat, period_header, insights with context %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='dx-3') }}">
+{% set k = a.kpis %}
+{% set q = {'range': a.range_key} if a.range_key != 'custom' else {'from': a.date_from, 'to': a.date_to} %}
+
+
+
+<div class="dx">
+  {% call period_header(a, 'analytics', 'Business analytics', 'Profitability, pricing, suppliers, customers, cash flow and outlook - calculated from your live records.') %}
+    <button class="dx-btn" type="button" onclick="window.print()"><i class="bi bi-printer"></i> Print</button>
+    {% if can_export %}
+    <a class="dx-btn" href="{{ url_for('analytics_export', section='timeline', **q) }}"><i class="bi bi-download"></i> Timeline</a>
+    <a class="dx-btn" href="{{ url_for('analytics_export', section='customers', **q) }}"><i class="bi bi-download"></i> Customers</a>
+    <a class="dx-btn" href="{{ url_for('analytics_export', section='suppliers', **q) }}"><i class="bi bi-download"></i> Suppliers</a>
+    {% endif %}
+  {% endcall %}
+
+  {% if not a.has_data %}
+  <section class="dx-card"><p class="dx-empty"><i class="bi bi-bar-chart-line"></i> No activity in this period yet. Record purchases, sales and payments, or pick a wider period, and the analytics will build themselves.</p></section>
+  {% endif %}
+
+  <!-- Health score + headline figures -->
+  <section class="dx-grid">
+    {% set h = a.health %}
+    <div class="dx-card dx-span-4 dx-health">
+      <div class="dx-card-head"><h3><i class="bi bi-heart-pulse"></i> Business health</h3><span class="dx-muted">0 - 100</span></div>
+      {% if h.score is not none %}
+      <div class="dx-ring dx-ring-{{ h.tone }}" style="--p:{{ h.score }}" role="img" aria-label="Health score {{ h.score }} out of 100">
+        <div><strong>{{ h.score }}</strong><span>{{ h.grade }}</span></div>
+      </div>
+      <ul class="dx-comps">
+        {% for c in h.components %}
+        <li title="{{ c.note }}">
+          <span class="dx-comp-name"><i class="bi bi-{{ c.icon }}"></i>{{ c.name }}</span>
+          <span class="dx-comp-bar"><span class="dx-comp-fill dx-fill-{{ c.tone }}" style="width:{{ c.score }}%"></span></span>
+          <strong>{{ c.score }}</strong>
+        </li>
+        {% endfor %}
+      </ul>
+      <p class="dx-muted dx-health-note">Weakest areas first. Hover a bar for the detail. The score blends profitability, collections, cash flow, stock cover, customer spread and supplier reliability.</p>
+      {% else %}
+      <p class="dx-empty"><i class="bi bi-heart-pulse"></i> The score appears once there is enough activity in this period.</p>
+      {% endif %}
+    </div>
+    <div class="dx-span-8 dx-kpis dx-kpis-in">
+      {{ stat('green', 'graph-up-arrow', 'Revenue', k.revenue|money, k.orders ~ ' orders · ' ~ '{:,.0f}'.format(k.kg_sold) ~ ' KG', a.deltas.revenue) }}
+      {{ stat('gold', 'piggy-bank', 'Gross profit', k.profit|money, ('%.1f%% margin'|format(k.margin * 100)) if k.margin is not none else 'No sales yet', a.deltas.profit) }}
+      {{ stat('green' if k.net_cash >= 0 else 'red', 'cash-stack', 'Net cash flow', k.net_cash|money, 'Collected − purchases', None) }}
+      {{ stat('red', 'hourglass-split', 'Days to get paid', ('%.0f days'|format(k.days_to_pay)) if k.days_to_pay is not none else '—', 'Amount-weighted average', a.deltas.days_to_pay, False) }}
+      {{ stat('teal', 'tag', 'Avg. selling price', (k.sell_price|money ~ ' / KG') if k.sell_price is not none else '—', 'Revenue per KG sold', a.deltas.sell_price) }}
+      {{ stat('blue', 'basket', 'Avg. buying price', (k.buy_price|money ~ ' / KG') if k.buy_price is not none else '—', 'Cost per KG received', a.deltas.buy_price, False) }}
+      {{ stat('violet', 'arrows-expand', 'Price spread', (k.spread|money ~ ' / KG') if k.spread is not none else '—', 'Sell minus buy, per KG', a.deltas.spread) }}
+      {{ stat('gold', 'box-seam', 'Transit loss', ('%.1f%%'|format(k.shrink_pct * 100)) if k.shrink_pct is not none else '—', ('{:,.0f} KG bought but not received'.format(k.shrink_kg)) if k.shrink_pct is not none else 'No purchases yet') }}
+    </div>
+  </section>
+
+  <section class="dx-kpis dx-kpis-wide dx-kpis-strip">
+    {{ stat('teal', 'arrow-repeat', 'Stock turnover', ('%.1f×'|format(k.turnover)) if k.turnover is not none else '—', 'KG sold ÷ average stock') }}
+    {{ stat('blue', 'person-check', 'Repeat customers', ('%.0f%%'|format(k.repeat_rate * 100)) if k.repeat_rate is not none else '—', 'Bought 2+ times in this period') }}
+    {{ stat('violet', 'pie-chart', 'Top-3 share', ('%.0f%%'|format(k.top3_share * 100)) if k.top3_share is not none else '—', 'Revenue from your 3 biggest buyers') }}
+    {{ stat('green', 'person-plus', 'New customers', k.new_customers, k.active_customers ~ ' active in this period') }}
+  </section>
+
+  <!-- P&L + insights -->
+  <section class="dx-grid">
+    <div class="dx-card dx-span-8">
+      <div class="dx-card-head"><h3><i class="bi bi-bar-chart-line"></i> Revenue, cost &amp; profit</h3><span class="dx-muted">per {{ a.timeline.granularity }} · line = margin %</span></div>
+      <div class="dx-chart"><canvas id="anPnl"></canvas></div>
+    </div>
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-stars"></i> What the data says</h3></div>
+      {{ insights(a.insights, 'Findings appear once there is enough activity.') }}
+    </div>
+  </section>
+
+  <!-- Outlook + at-risk -->
+  <section class="dx-grid">
+    {% set f = a.forecast %}
+    <div class="dx-card dx-span-8">
+      <div class="dx-card-head"><h3><i class="bi bi-binoculars"></i> Sales outlook</h3><span class="dx-muted">weekly sales · last 8 weeks + 4-week projection</span></div>
+      {% if f.ready %}
+      <div class="dx-outlook">
+        <div><small>Projected next 4 weeks</small><strong>{{ f.projected_total|money }}</strong></div>
+        <div><small>Versus last 4 weeks</small><strong class="{{ 'dx-pos' if f.trend_pct is not none and f.trend_pct >= 0 else 'dx-neg' }}">{{ ('%+.0f%%'|format(f.trend_pct)) if f.trend_pct is not none else '—' }}</strong></div>
+        <div><small>Stock runs out around</small><strong>{{ f.runout_date or '—' }}</strong></div>
+      </div>
+      <div class="dx-chart dx-chart-sm"><canvas id="anForecast"></canvas></div>
+      <p class="dx-muted">A straight-line trend through recent weeks. It is a guide, not a promise: seasons, prices and supply will move it.</p>
+      {% else %}
+      <p class="dx-empty"><i class="bi bi-binoculars"></i> The outlook needs sales in at least 4 of the last 8 weeks. Keep recording sales and it will appear.</p>
+      {% endif %}
+    </div>
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-person-exclamation"></i> Customers to call</h3><span class="dx-muted">quiet for longer than usual</span></div>
+      {% if a.at_risk %}
+      <ul class="dx-feed">
+        {% for c in a.at_risk %}
+        <li><span class="dx-dot dx-dot-purchase"></span>
+          <div><strong><a href="{{ url_for('customer_statement', customer_id=c.id) }}">{{ c.name }}</a></strong>
+          <small>Usually buys every ~{{ c.usual_days }} days · silent for {{ c.silent_days }} · last {{ c.last|short_date }}</small></div></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="dx-empty"><i class="bi bi-emoji-smile"></i> No regular customer has gone quiet.</p>{% endif %}
+    </div>
+  </section>
+
+  <!-- Supporting charts -->
+  <section class="dx-grid">
+    <div class="dx-card dx-span-6">
+      <div class="dx-card-head"><h3><i class="bi bi-arrows-expand"></i> Buy vs sell price per KG</h3><span class="dx-muted">the gap is your margin</span></div>
+      <div class="dx-chart dx-chart-sm"><canvas id="anPrice"></canvas></div>
+    </div>
+    <div class="dx-card dx-span-6">
+      <div class="dx-card-head"><h3><i class="bi bi-cash-stack"></i> Cash flow</h3><span class="dx-muted">collected vs purchases · line = net</span></div>
+      <div class="dx-chart dx-chart-sm"><canvas id="anCash"></canvas></div>
+    </div>
+    <div class="dx-card dx-span-6">
+      <div class="dx-card-head"><h3><i class="bi bi-boxes"></i> Stock level over time</h3><span class="dx-muted">KG on hand</span></div>
+      <div class="dx-chart dx-chart-sm"><canvas id="anStock"></canvas></div>
+    </div>
+    <div class="dx-card dx-span-3">
+      <div class="dx-card-head"><h3><i class="bi bi-calendar-week"></i> By weekday</h3></div>
+      <div class="dx-chart dx-chart-sm"><canvas id="anWeekday"></canvas></div>
+    </div>
+    <div class="dx-card dx-span-3">
+      <div class="dx-card-head"><h3><i class="bi bi-rulers"></i> Order size</h3></div>
+      <div class="dx-chart dx-chart-sm"><canvas id="anSize"></canvas></div>
+    </div>
+  </section>
+
+  <!-- Customers -->
+  <section class="dx-grid">
+    <div class="dx-card dx-span-12">
+      <div class="dx-card-head"><h3><i class="bi bi-people"></i> Customer performance</h3>
+        <span class="dx-muted">Class A = behind the first 80% of revenue · B = next 15% · C = last 5%</span></div>
+      {% if a.customers %}
+      <div class="dx-chart dx-chart-sm"><canvas id="anPareto"></canvas></div>
+      <div class="dx-table-wrap">
+        <table class="dx-table">
+          <thead><tr><th>Customer</th><th>Class</th><th class="dx-num">Orders</th><th class="dx-num">Revenue</th><th class="dx-num">Share</th><th class="dx-num">Profit</th><th class="dx-num">Margin</th><th class="dx-num">Days to pay</th><th class="dx-num">Owes</th><th>Last bought</th></tr></thead>
+          <tbody>
+            {% for c in a.customers %}
+            <tr>
+              <td data-label="Customer"><a href="{{ url_for('customer_statement', customer_id=c.id) }}"><strong>{{ c.name }}</strong></a>{% if c.is_new %} <span class="dx-pill dx-pill-good">New</span>{% endif %}<small>{{ c.orders }} order{{ '' if c.orders == 1 else 's' }} · avg {{ c.avg_order|money }}</small></td>
+              <td data-label="Class"><span class="dx-pill {{ 'dx-pill-good' if c.abc == 'A' else 'dx-pill-warn' if c.abc == 'B' else 'dx-pill-flat' }}">{{ c.abc }}</span></td>
+              <td data-label="Orders" class="dx-num">{{ c.orders }}</td>
+              <td data-label="Revenue" class="dx-num"><strong>{{ c.revenue|money }}</strong></td>
+              <td data-label="Share" class="dx-num">{{ '%.1f%%'|format(c.share * 100) }}</td>
+              <td data-label="Profit" class="dx-num {{ 'dx-neg' if c.profit < 0 }}">{{ c.profit|money }}</td>
+              <td data-label="Margin" class="dx-num">{% if c.margin is not none %}<span class="dx-pill {{ 'dx-pill-good' if c.margin >= 0.15 else 'dx-pill-warn' if c.margin >= 0.05 else 'dx-pill-bad' }}">{{ '%.0f%%'|format(c.margin * 100) }}</span>{% else %}—{% endif %}</td>
+              <td data-label="Days to pay" class="dx-num">{% if c.days_to_pay is not none %}<span class="{{ 'dx-neg' if c.days_to_pay > 45 }}">{{ '%.0f'|format(c.days_to_pay) }}</span>{% else %}—{% endif %}</td>
+              <td data-label="Owes" class="dx-num {{ 'dx-neg' if c.owed > 0.005 }}">{{ c.owed|money if c.owed > 0.005 else '—' }}</td>
+              <td data-label="Last bought">{{ c.last_sale|short_date }}{% if c.days_since is not none %}<small>{{ c.days_since }} day{{ '' if c.days_since == 1 else 's' }} ago</small>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<p class="dx-empty"><i class="bi bi-people"></i> No customer sales in this period.</p>{% endif %}
+    </div>
+  </section>
+
+  <!-- Suppliers + payment methods -->
+  <section class="dx-grid">
+    <div class="dx-card dx-span-8">
+      <div class="dx-card-head"><h3><i class="bi bi-truck"></i> Supplier performance</h3><span class="dx-muted">cost per KG is measured on maize actually received</span></div>
+      {% if a.suppliers %}
+      <div class="dx-table-wrap">
+        <table class="dx-table">
+          <thead><tr><th>Supplier / agent</th><th class="dx-num">Spend</th><th class="dx-num">Bought KG</th><th class="dx-num">Received KG</th><th class="dx-num">Loss</th><th class="dx-num">Cost / KG</th></tr></thead>
+          <tbody>
+            {% for s in a.suppliers %}
+            <tr>
+              <td data-label="Supplier"><strong>{{ s.name }}</strong><small>{{ s.purchases }} purchase{{ '' if s.purchases == 1 else 's' }} · last {{ s.last_buy|short_date }}</small></td>
+              <td data-label="Spend" class="dx-num">{{ s.spend|money }}</td>
+              <td data-label="Bought KG" class="dx-num">{{ '{:,.0f}'.format(s.bought) }}</td>
+              <td data-label="Received KG" class="dx-num">{{ '{:,.0f}'.format(s.received) }}</td>
+              <td data-label="Loss" class="dx-num"><span class="dx-pill {{ 'dx-pill-bad' if s.loss_pct > 0.05 else 'dx-pill-warn' if s.loss_pct > 0.02 else 'dx-pill-good' }}">{{ '%.1f%%'|format(s.loss_pct * 100) }}</span></td>
+              <td data-label="Cost / KG" class="dx-num">{{ (s.cost_per_kg|money) if s.cost_per_kg else '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<p class="dx-empty"><i class="bi bi-truck"></i> No purchases in this period.</p>{% endif %}
+    </div>
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-wallet2"></i> Payment methods</h3></div>
+      {% if a.patterns.methods %}
+      <div class="dx-table-wrap">
+        <table class="dx-table">
+          <thead><tr><th>Method</th><th class="dx-num">Payments</th><th class="dx-num">Total</th></tr></thead>
+          <tbody>
+            {% for m in a.patterns.methods %}
+            <tr><td data-label="Method"><strong>{{ m.method|title }}</strong><small>avg {{ m.avg|money }}</small></td><td data-label="Payments" class="dx-num">{{ m.count }}</td><td data-label="Total" class="dx-num">{{ m.total|money }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<p class="dx-empty"><i class="bi bi-wallet2"></i> No payments in this period.</p>{% endif %}
+    </div>
+  </section>
+
+  <p class="dx-foot">Profit uses your weighted-average purchase cost. Figures are calculated live and exclude deleted records. Data to {{ a.date_to|short_date }}.</p>
+</div>
+
+<script id="anData" type="application/json">{{ {'t': a.timeline, 'weekday': a.patterns.weekday, 'sizes': a.patterns.sizes, 'customers': a.customers[:10], 'forecast': a.forecast}|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dx.js') }}"></script>
+<script>
+(function () {
+  const d = JSON.parse(document.getElementById('anData').textContent), t = d.t;
+  const { make, scales, ink, grid, money: gh, num } = DX;
+
+  make('anPnl', { type: 'bar', data: { labels: t.labels, datasets: [
+      { label: 'Revenue', data: t.revenue, backgroundColor: 'rgba(22,163,74,0.75)', borderRadius: 4, order: 2 },
+      { label: 'Cost of goods', data: t.cogs, backgroundColor: 'rgba(217,119,6,0.7)', borderRadius: 4, order: 2 },
+      { label: 'Gross profit', data: t.profit, backgroundColor: 'rgba(37,99,235,0.75)', borderRadius: 4, order: 2 },
+      { label: 'Margin %', data: t.margin, type: 'line', yAxisID: 'y2', borderColor: '#7c3aed', tension: 0.3, borderWidth: 2, pointRadius: 3, spanGaps: true, order: 1 }] },
+    options: { scales: scales({ y2: { position: 'right', grid: { display: false }, ticks: { color: ink(), callback: v => v + '%' } } }),
+      plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + (c.dataset.yAxisID === 'y2' ? (c.parsed.y == null ? '—' : c.parsed.y + '%') : gh(c.parsed.y)) } } } } });
+
+  const f = d.forecast;
+  if (f.ready) {
+    const labels = f.labels.concat(f.future_labels);
+    const bridge = f.history.map((v, i) => i === f.history.length - 1 ? v : null).concat(f.future);
+    make('anForecast', { type: 'line', data: { labels, datasets: [
+        { label: 'Actual weekly sales', data: f.history.concat(f.future.map(() => null)), borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.14)', fill: true, tension: 0.3, borderWidth: 2.5, pointRadius: 3 },
+        { label: 'Projection', data: bridge, borderColor: '#7c3aed', borderDash: [6, 5], tension: 0.3, borderWidth: 2.5, pointRadius: 3, pointStyle: 'rectRot' }] },
+      options: { scales: scales(), plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + gh(c.parsed.y) } } } } });
+  }
+
+  make('anPrice', { type: 'line', data: { labels: t.labels, datasets: [
+      { label: 'Selling price / KG', data: t.sell_price, borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.12)', fill: '+1', tension: 0.3, borderWidth: 2.5, pointRadius: 3, spanGaps: true },
+      { label: 'Buying price / KG', data: t.buy_price, borderColor: '#d97706', tension: 0.3, borderWidth: 2.5, pointRadius: 3, spanGaps: true }] },
+    options: { scales: scales({ y: { beginAtZero: false, grid: { color: grid() }, ticks: { color: ink(), callback: v => Number(v).toFixed(2) } } }),
+      plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + gh(c.parsed.y) } } } } });
+
+  make('anCash', { type: 'bar', data: { labels: t.labels, datasets: [
+      { label: 'Collected', data: t.collected, backgroundColor: 'rgba(37,99,235,0.75)', borderRadius: 4, order: 2 },
+      { label: 'Purchases', data: t.spend, backgroundColor: 'rgba(217,119,6,0.7)', borderRadius: 4, order: 2 },
+      { label: 'Net cash', data: t.net_cash, type: 'line', borderColor: '#16a34a', tension: 0.3, borderWidth: 2.5, pointRadius: 3, order: 1 }] },
+    options: { scales: scales({ y: { grid: { color: grid() }, ticks: { color: ink(), callback: num } } }),
+      plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + gh(c.parsed.y) } } } } });
+
+  make('anStock', { type: 'line', data: { labels: t.labels, datasets: [
+      { label: 'Stock (KG)', data: t.stock, borderColor: '#0d9488', backgroundColor: 'rgba(13,148,136,0.16)', fill: true, tension: 0.25, borderWidth: 2.5, pointRadius: 2 }] },
+    options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => num(c.parsed.y) + ' KG' } } }, scales: scales() } });
+
+  make('anWeekday', { type: 'bar', data: { labels: d.weekday.map(x => x.day.slice(0, 3)), datasets: [{ label: 'Revenue', data: d.weekday.map(x => x.revenue), backgroundColor: 'rgba(22,163,74,0.75)', borderRadius: 4 }] },
+    options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => gh(c.parsed.y) + ' · ' + d.weekday[c.dataIndex].orders + ' orders' } } }, scales: scales() } });
+
+  make('anSize', { type: 'bar', data: { labels: d.sizes.map(x => x.band.replace(' KG', '').replace('and over', '+')), datasets: [{ label: 'Orders', data: d.sizes.map(x => x.orders), backgroundColor: 'rgba(124,58,237,0.72)', borderRadius: 4 }] },
+    options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.parsed.y + ' orders · ' + gh(d.sizes[c.dataIndex].revenue) } } }, scales: scales() } });
+
+  if (d.customers.length) make('anPareto', { type: 'bar', data: { labels: d.customers.map(c => c.name), datasets: [
+      { label: 'Revenue', data: d.customers.map(c => c.revenue), backgroundColor: 'rgba(22,163,74,0.75)', borderRadius: 4, order: 2 },
+      { label: 'Profit', data: d.customers.map(c => c.profit), backgroundColor: 'rgba(37,99,235,0.75)', borderRadius: 4, order: 2 },
+      { label: 'Cumulative share %', data: d.customers.map(c => Math.round(c.cum_share * 1000) / 10), type: 'line', yAxisID: 'y2', borderColor: '#d97706', tension: 0.25, borderWidth: 2, pointRadius: 3, order: 1 }] },
+    options: { scales: scales({ y2: { position: 'right', min: 0, max: 100, grid: { display: false }, ticks: { color: ink(), callback: v => v + '%' } } }),
+      plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + (c.dataset.yAxisID === 'y2' ? c.parsed.y + '%' : gh(c.parsed.y)) } } } } });
+
+})();
+</script>
+{% endblock %}

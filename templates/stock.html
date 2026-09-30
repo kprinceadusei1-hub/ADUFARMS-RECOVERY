@@ -1,20 +1,174 @@
 {% extends "base.html" %}
 {% block title %}Stock – ADUFARMS{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-end mb-2"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('stock', format='csv') }}"><i class="bi bi-download me-1"></i>Export movements</a></div>
+{% from "_dx.html" import chip, stat, period_header, insights, tab_bar with context %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='dx-8') }}">
+{% set pos = si.position %}{% set age = si.age %}{% set rec = si.reconcile %}
+{% set qs = {} %}{% for key, value in filters.items() %}{% if value %}{% set _ = qs.update({key: value}) %}{% endif %}{% endfor %}
+{% set filtered = qs|length > 0 %}
+
 <div class="dashboard-heading"><div><span class="eyebrow">INVENTORY</span><h2>Stock management</h2><p>Every stock change is traceable. Purchase = IN · Sale = OUT.</p></div>
 {% if depleted %}<span class="status-badge status-unpaid"><i class="bi bi-exclamation-triangle"></i> STOCK DEPLETED</span>
 {% elif low %}<span class="status-badge status-part"><i class="bi bi-exclamation-circle"></i> LOW STOCK</span>
 {% else %}<span class="status-badge status-paid"><i class="bi bi-check-circle"></i> STOCK HEALTHY</span>{% endif %}</div>
-<div class="row g-3 mb-3">
-<div class="col-6 col-xl-3"><div class="card stat-card h-100"><div class="card-body"><div class="stat-label">Current stock</div><div class="stat-value">{{ "{:,.2f}".format(available) }} KG</div><div class="stat-support">~{{ ((available/50)|round|int) if available else 0 }} bags (50kg) · ~{{ ((available/100)|round|int) if available else 0 }} bags (100kg)</div></div></div></div>
-<div class="col-6 col-xl-3"><div class="card stat-card h-100"><div class="card-body"><div class="stat-label">Total purchased</div><div class="stat-value">{{ "{:,.2f}".format(purchased) }} KG</div><div class="stat-support">Stock in · ~{{ ((purchased/50)|round|int) if purchased else 0 }} bags</div></div></div></div>
-<div class="col-6 col-xl-3"><div class="card stat-card h-100"><div class="card-body"><div class="stat-label">Total sold</div><div class="stat-value">{{ "{:,.2f}".format(sold) }} KG</div><div class="stat-support">Dispatched · ~{{ ((sold/50)|round|int) if sold else 0 }} bags</div></div></div></div>
-<div class="col-6 col-xl-3"><div class="card h-100"><div class="card-body"><div class="stat-label">Stock level</div><div class="stock-meter" style="background:var(--panel-soft)"><span style="width:{{ [((available/purchased*100),100)|min,0]|max if purchased else 0 }}%"></span></div><div class="stat-support">{{ "{:.1f}".format((available/purchased*100) if purchased else 0) }}% of purchased stock remains</div></div></div></div>
+
+{{ tab_bar([('overview', 'boxes', 'Overview', none), ('movements', 'list-ul', 'Movements', move_totals.n), ('analytics', 'graph-up-arrow', 'Analytics', none)],
+           'Ledger out by ' ~ ('{:,.0f}'.format(rec.difference|abs)) ~ ' KG' if not rec.ok else '') }}
+
+<!-- ============ OVERVIEW ============ -->
+<section id="tab-overview" class="dx-panel">
+<div class="dx">
+  <section class="dx-kpis dx-kpis-wide">
+    {{ stat('teal', 'box-seam', 'Current stock', '{:,.0f} KG'.format(pos.kg), '≈ ' ~ '{:,.0f}'.format(pos.bags[50]) ~ ' bags of 50 KG · ' ~ '{:,.0f}'.format(pos.bags[100]) ~ ' of 100 KG') }}
+    {{ stat('gold', 'piggy-bank', 'Stock value', pos.value|money, (pos.unit_cost|money ~ ' / KG average cost') if pos.unit_cost else 'Needs a purchase') }}
+    {{ stat('blue', 'hourglass-split', 'Days of cover', ('%.0f days'|format(pos.cover_days)) if pos.cover_days is not none else '—', ('at ' ~ ('{:,.0f}'.format(pos.daily_rate)) ~ ' KG / day') if pos.daily_rate else 'No recent sales to measure') }}
+    {{ stat('green', 'arrow-down-circle', 'Total purchased', '{:,.0f} KG'.format(purchased), 'Stock in, all time') }}
+    {{ stat('red', 'arrow-up-circle', 'Total sold', '{:,.0f} KG'.format(sold), 'Dispatched, all time') }}
+    {{ stat('violet', 'hourglass-bottom', 'Average stock age', ('%.0f days'|format(age.avg_age)) if age.avg_age is not none else '—', ('Oldest lot ' ~ age.oldest_days ~ ' days') if age.oldest_days is not none else 'Nothing in store') }}
+  </section>
+
+  <section class="dx-grid">
+    <div class="dx-card dx-span-5">
+      <div class="dx-card-head"><h3><i class="bi bi-hourglass-bottom"></i> How old is your stock?</h3><span class="dx-muted">oldest purchases are sold first (FIFO)</span></div>
+      {% set colors = {'0-14 days':'#16a34a','15-30 days':'#84cc16','31-60 days':'#f59e0b','Over 60 days':'#dc2626'} %}
+      {% if age.total > 0.5 %}
+      <div class="dx-stack">{% for label, kg in age.bands.items() if kg > 0.05 %}<span style="flex:{{ kg }};background:{{ colors[label] }}" title="{{ label }}: {{ '{:,.0f}'.format(kg) }} KG"></span>{% endfor %}</div>
+      <ul class="dx-legend">{% for label, kg in age.bands.items() %}<li><i style="background:{{ colors[label] }}"></i><span>{{ label }}</span><strong>{{ '{:,.0f}'.format(kg) }} KG</strong></li>{% endfor %}</ul>
+      {% if age.lots %}
+      <h6 class="dx-sub">Oldest lots on hand</h6>
+      <ul class="dx-feed">
+        {% for l in age.lots[:4] %}<li><span class="dx-dot {{ 'dx-dot-sale' if l.age <= 30 else 'dx-dot-purchase' }}"></span>
+          <div><strong>{{ l.purchase_id }} · {{ '{:,.0f}'.format(l.kg) }} KG</strong><small>{{ l.supplier }} · bought {{ l.date|short_date }} · {{ l.age }} days ago</small></div></li>{% endfor %}
+      </ul>{% endif %}
+      {% else %}<p class="dx-empty"><i class="bi bi-box-seam"></i> No stock in store.</p>{% endif %}
+    </div>
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-shield-check"></i> Stock ledger check</h3>
+        <span class="dx-pill {{ 'dx-pill-good' if rec.ok else 'dx-pill-bad' }}">{{ 'Balanced' if rec.ok else 'Out of balance' }}</span></div>
+      <dl class="dx-facts">
+        <div><dt>Purchases − sales</dt><dd>{{ '{:,.1f}'.format(rec.book_stock) }} KG</dd></div>
+        <div><dt>Movement ledger</dt><dd>{{ '{:,.1f}'.format(rec.ledger_stock) }} KG</dd></div>
+        <div><dt>Difference</dt><dd class="{{ 'dx-neg' if not rec.ok }}">{{ '{:+,.1f}'.format(rec.difference) }} KG</dd></div>
+        <div><dt>Ledger entries</dt><dd>{{ rec.movement_count }}</dd></div>
+      </dl>
+      <p class="dx-muted dx-health-note">{% if rec.ok %}Every purchase and sale has a matching ledger entry. Nothing has been changed behind the system's back.{% else %}The ledger and the records disagree. This usually means data was edited or removed outside the normal screens. Check the audit log.{% endif %}</p>
+    </div>
+    <div class="dx-card dx-span-3">
+      <div class="dx-card-head"><h3><i class="bi bi-cart-plus"></i> Restock</h3></div>
+      {% if pos.daily_rate %}
+      <dl class="dx-facts">
+        <div><dt>Reorder by</dt><dd>{{ pos.reorder_by or '—' }}</dd></div>
+        <div><dt>Suggested buy</dt><dd>{{ '{:,.0f}'.format(pos.suggested_kg) }} KG</dd></div>
+        <div><dt>Est. budget</dt><dd>{{ pos.budget|money if pos.budget else '—' }}</dd></div>
+        <div><dt>Alert level</dt><dd>{{ '{:,.0f}'.format(pos.low_level) }} KG</dd></div>
+      </dl>
+      {% if pos.suggested_kg > 0 %}<a class="dx-btn dx-btn-primary mt-2" href="{{ url_for('purchases') }}"><i class="bi bi-cart-plus"></i> Plan a purchase</a>{% endif %}
+      {% else %}<p class="dx-empty"><i class="bi bi-cart"></i> Suggestions appear once you have sales.</p>{% endif %}
+    </div>
+  </section>
+  <section class="dx-grid">
+    <div class="dx-card dx-span-12">
+      <div class="dx-card-head"><h3><i class="bi bi-stars"></i> Stock insights</h3></div>
+      {{ insights(si.insights, 'Insights appear as you record purchases and sales.') }}
+    </div>
+  </section>
 </div>
-<div class="card"><div class="card-body"><div class="panel-title"><h5>Stock movements ({{ movements|length }})</h5><div class="table-tools mb-0"><input class="form-control form-control-sm" data-table-search="#stockTable" placeholder="Search movements..."></div></div>
-<div class="table-responsive"><table id="stockTable" class="table table-hover sortable"><thead><tr><th data-sort>Date</th><th data-sort>Type</th><th data-sort>Reference</th><th data-sort class="text-end">Quantity</th><th>By</th><th>Notes</th></tr></thead>
-<tbody>{% for m in movements %}<tr><td>{{ m.movement_date }}</td><td><span class="status-badge {% if m.movement_type=='PURCHASE' %}status-paid{% elif m.movement_type=='SALE' %}status-unpaid{% else %}status-part{% endif %}">{{ m.movement_type }}</span></td><td>{{ m.reference }}</td><td class="text-end">{% if m.quantity_kg>0 %}+{% endif %}{{ "{:,.2f}".format(m.quantity_kg) }} KG</td><td>{{ m.created_by }}</td><td class="text-muted">{{ m.notes or '-' }}</td></tr>{% else %}<tr><td colspan="6"><div class="empty-state"><i class="bi bi-box-seam"></i>No stock movements yet.</div></td></tr>{% endfor %}</tbody></table></div>
-<div class="table-pagination d-flex justify-content-between align-items-center mt-2"><small class="text-muted" data-page-info></small><div class="btn-group btn-group-sm"><button class="btn btn-outline-secondary" data-page-prev>Prev</button><button class="btn btn-outline-secondary" data-page-next>Next</button></div></div>
-</div></div>
+</section>
+
+<!-- ============ MOVEMENTS ============ -->
+<section id="tab-movements" class="dx-panel" hidden>
+  <div class="card"><div class="card-body">
+    <form class="dx-filters" method="get" action="{{ url_for('stock') }}">
+      <input type="search" class="form-control form-control-sm" name="q" value="{{ filters.q }}" placeholder="Search reference, notes, user...">
+      <select class="form-select form-select-sm" name="type">
+        <option value="">All movement types</option>
+        {% for t in ('PURCHASE', 'SALE', 'REVERSAL', 'ADJUSTMENT') %}<option value="{{ t }}" {{ 'selected' if filters.type == t }}>{{ t|title }}</option>{% endfor %}
+      </select>
+      <label>From <input type="date" class="form-control form-control-sm" name="sfrom" value="{{ filters.sfrom }}"></label>
+      <label>To <input type="date" class="form-control form-control-sm" name="sto" value="{{ filters.sto }}"></label>
+      <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-funnel"></i> Filter</button>
+      {% if filtered %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('stock') }}#movements">Reset</a>{% endif %}
+      {% if can_export %}<a class="btn btn-sm btn-outline-success ms-auto" href="{{ url_for('stock', format='csv', **qs) }}"><i class="bi bi-download"></i> Export CSV</a>{% endif %}
+    </form>
+    <div class="dx-summary">
+      <span><strong>{{ move_totals.n }}</strong> movement{{ '' if move_totals.n == 1 else 's' }}{% if filtered %} match{% endif %}</span>
+      <span class="{{ 'dx-pos' if move_totals.net >= 0 else 'dx-neg' }}"><strong>{{ '{:+,.1f}'.format(move_totals.net) }} KG</strong> net</span>
+    </div>
+    <div class="table-responsive"><table id="stockTable" class="table table-hover sortable">
+      <thead><tr><th data-sort>Date</th><th data-sort>Type</th><th data-sort>Reference</th><th data-sort class="text-end">Quantity</th><th>By</th><th>Notes</th></tr></thead>
+      <tbody>
+        {% for m in movements %}
+        <tr>
+          <td>{{ m.movement_date|short_date }}</td>
+          <td><span class="status-badge {% if m.movement_type=='PURCHASE' %}status-paid{% elif m.movement_type=='SALE' %}status-unpaid{% else %}status-part{% endif %}">{{ m.movement_type }}</span></td>
+          <td><code>{{ m.reference }}</code></td>
+          <td class="text-end fw-bold {{ 'dx-pos' if m.quantity_kg >= 0 else 'dx-neg' }}">{{ '{:+,.2f}'.format(m.quantity_kg) }} KG</td>
+          <td>{{ m.created_by }}</td>
+          <td>{{ m.notes or '' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6"><div class="empty-state"><i class="bi bi-boxes"></i>{% if filtered %}No movements match these filters.{% else %}No stock movements yet.{% endif %}</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    <div class="table-pagination d-flex justify-content-between align-items-center mt-2"><small class="text-muted" data-page-info></small><div class="btn-group btn-group-sm"><button class="btn btn-outline-secondary" data-page-prev type="button">Prev</button><button class="btn btn-outline-secondary" data-page-next type="button">Next</button></div></div>
+  </div></div>
+</section>
+
+<!-- ============ ANALYTICS ============ -->
+<section id="tab-analytics" class="dx-panel" hidden>
+<div class="dx">
+  {{ period_header(si, 'stock', 'Inventory analytics', 'How stock flows in and out, how fast it turns over, and what is sitting too long.', '#analytics', 'stock') }}
+  {% set k = si.kpis %}
+  {% if not si.has_data %}<section class="dx-card"><p class="dx-empty"><i class="bi bi-boxes"></i> No purchases or sales in this period.</p></section>{% endif %}
+  <section class="dx-kpis dx-kpis-wide">
+    {{ stat('green', 'arrow-down-circle', 'Stock in', '{:,.0f} KG'.format(k.kg_in), k.purchases ~ (' purchase' if k.purchases == 1 else ' purchases'), si.deltas.kg_in) }}
+    {{ stat('red', 'arrow-up-circle', 'Stock out', '{:,.0f} KG'.format(k.kg_out), k.sales ~ (' sale' if k.sales == 1 else ' sales'), si.deltas.kg_out) }}
+    {{ stat('blue' if k.net >= 0 else 'gold', 'plus-slash-minus', 'Net change', '{:+,.0f} KG'.format(k.net), 'In minus out', si.deltas.net) }}
+    {{ stat('teal', 'arrow-repeat', 'Stock turnover', ('%.1f×'|format(si.turnover)) if si.turnover is not none else '—', 'KG sold ÷ average stock') }}
+    {{ stat('violet', 'calendar2-check', 'Days to sell through', ('%.0f days'|format(si.days_to_sell)) if si.days_to_sell is not none else '—', 'Average stock ÷ daily sales') }}
+    {{ stat('gold', 'truck', 'Lost in transit', '{:,.0f} KG'.format(k.lost_in_transit), 'Bought but never received') }}
+  </section>
+  <section class="dx-grid">
+    <div class="dx-card dx-span-8">
+      <div class="dx-card-head"><h3><i class="bi bi-activity"></i> Stock level &amp; flow</h3><span class="dx-muted">per {{ si.series.granularity }} · line = KG on hand</span></div>
+      <div class="dx-chart"><canvas id="stFlow"></canvas></div>
+    </div>
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-diagram-2"></i> Ledger activity</h3><span class="dx-muted">movement types</span></div>
+      {% if si.mix %}<div class="dx-donut"><canvas id="stMix"></canvas></div>
+      <ul class="dx-legend">{% for m in si.mix %}<li><i class="st-dot" data-i="{{ loop.index0 }}"></i><span>{{ m.type|title }} ({{ m.count }})</span><strong>{{ '{:+,.0f}'.format(m.kg) }} KG</strong></li>{% endfor %}</ul>
+      {% else %}<p class="dx-empty"><i class="bi bi-diagram-2"></i> No movements in this period.</p>{% endif %}
+    </div>
+  </section>
+  <p class="dx-foot">Stock on hand = KG received − KG sold. Stock age assumes the oldest purchases are sold first.</p>
+</div>
+</section>
+
+<script id="stData" type="application/json">{{ {'series': si.series, 'mix': si.mix}|tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dx.js') }}"></script>
+<script>
+(function () {
+  const data = JSON.parse(document.getElementById('stData').textContent);
+  const filtered = ['q', 'type', 'sfrom', 'sto'].some(k => new URLSearchParams(location.search).get(k));
+  DX.tabs({ initial: {{ ('analytics' if analytics_requested else '')|tojson }} || (filtered || new URLSearchParams(location.search).get('format') ? 'movements' : ''), onFirstShow: { analytics: initCharts } });
+  function initCharts() {
+    const { make, scales, num, palette, dark } = DX, s = data.series;
+    make('stFlow', { type: 'bar', data: { labels: s.labels, datasets: [
+        { label: 'Stock in', data: s.kg_in, backgroundColor: 'rgba(22,163,74,0.75)', borderRadius: 4, order: 2 },
+        { label: 'Stock out', data: s.kg_out.map(v => -v), backgroundColor: 'rgba(220,38,38,0.7)', borderRadius: 4, order: 2 },
+        { label: 'KG on hand', data: s.level, type: 'line', yAxisID: 'y2', borderColor: '#0d9488', backgroundColor: 'rgba(13,148,136,0.14)', fill: true, tension: 0.25, borderWidth: 2.5, pointRadius: 2, order: 1 }] },
+      options: { scales: scales({ y: { grid: { color: DX.grid() }, ticks: { color: DX.ink(), callback: num } },
+                                 y2: { position: 'right', beginAtZero: true, grid: { display: false }, ticks: { color: DX.ink(), callback: num } } }),
+        plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + num(Math.abs(c.parsed.y)) + ' KG' } } } } });
+    if (data.mix.length) {
+      make('stMix', { type: 'doughnut', data: { labels: data.mix.map(m => m.type), datasets: [{ data: data.mix.map(m => m.count), backgroundColor: data.mix.map((_, i) => palette[i % palette.length]), borderWidth: 2, borderColor: dark() ? '#182820' : '#fff' }] },
+        options: { cutout: '66%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.label + ': ' + c.parsed + ' entries' } } } } });
+      document.querySelectorAll('.st-dot').forEach(el => { el.style.background = palette[Number(el.dataset.i) % palette.length]; });
+    }
+  }
+})();
+</script>
 {% endblock %}

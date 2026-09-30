@@ -287,10 +287,6 @@
   color: #3a5347;
 }
 
-.invoice-totals > div:last-child {
-  border-bottom: 0;
-}
-
 .invoice-totals strong {
   color: #163624;
 }
@@ -308,10 +304,6 @@
 
 .invoice-totals .balance {
   background: #fff7e7;
-}
-
-.invoice-totals .status-total {
-  background: #f3f8f4;
 }
 
 .payment-block {

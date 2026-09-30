@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Audit Logs - ADUFARMS{% endblock %}
 {% block content %}
+{% from "_dx.html" import chip, stat, period_header, insights, tab_bar with context %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='dx-10') }}">
 <span id="reversals" class="anchor-target" aria-hidden="true"></span>
 <div class="dashboard-heading">
   <div>
@@ -26,6 +28,10 @@
   </div>
 </div>
 
+{{ tab_bar([('trail', 'journal-text', 'Activity trail', rows|length), ('insights', 'shield-check', 'Insights', none)],
+           (ai.cleared|length ~ ' log clearing' ~ ('s' if ai.cleared|length != 1 else '')) if ai.cleared else '') }}
+
+<section id="tab-trail" class="dx-panel">
 <div class="card mt-3">
   <div class="card-body">
     <div class="panel-title d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -60,13 +66,18 @@
         <label class="form-label small mb-1" for="auditAction">Action</label>
         <input class="form-control form-control-sm" id="auditAction" name="action" value="{{ action }}" placeholder="e.g. DELETE" list="auditActionList">
         <datalist id="auditActionList">
-          <option value="CREATE">
-          <option value="UPDATE">
-          <option value="DELETE">
-          <option value="REVERSED">
-          <option value="RESTORE">
-          <option value="LOGIN">
-          <option value="BACKUP">
+          <option value="PURCHASE CREATED">
+          <option value="PURCHASE REVERSED">
+          <option value="PURCHASE RESTORED">
+          <option value="SALE REVERSED">
+          <option value="PAYMENT REVERSED">
+          <option value="LOGIN SUCCESS">
+          <option value="LOGIN FAILED">
+          <option value="LOGIN LOCKED">
+          <option value="DATABASE BACKUP">
+          <option value="DATABASE RESTORE">
+          <option value="USER CREATED">
+          <option value="PASSWORD CHANGED">
         </datalist>
       </div>
       <div class="col-md-2">
@@ -107,7 +118,9 @@
             <td><span class="fw-semibold">{{ row.created_at|pretty_date }}</span></td>
             <td><span class="badge bg-secondary bg-opacity-10 text-secondary border px-2 py-1"><i class="bi bi-person me-1"></i>{{ row.username or 'SYSTEM' }}</span></td>
             <td>
-              {% if 'REVERSED' in row.action or 'DELETE' in row.action %}
+              {% if 'LOGIN LOCKED' in row.action or 'LOGIN FAILED' in row.action %}
+                <span class="status-badge status-unpaid"><i class="bi bi-shield-lock"></i> {{ row.action }}</span>
+              {% elif 'REVERSED' in row.action or 'DELETE' in row.action %}
                 <span class="status-badge status-unpaid"><i class="bi bi-arrow-counterclockwise"></i> {{ row.action }}</span>
               {% elif 'CREATE' in row.action or 'SAVED' in row.action or 'ADDED' in row.action %}
                 <span class="status-badge status-paid"><i class="bi bi-check-circle"></i> {{ row.action }}</span>
@@ -173,9 +186,92 @@
   <input type="hidden" name="delete_all" id="inputDeleteAll" value="0">
   <div id="hiddenLogIdsContainer"></div>
 </form>
+</section>
+
+<section id="tab-insights" class="dx-panel" hidden>
+<div class="dx">
+  {{ period_header(ai, 'audit_logs', 'Activity insights', 'Who is doing what, what changed, and anything that looks unusual.', '#insights', 'audit_logs') }}
+  {% if not ai.has_data %}<section class="dx-card"><p class="dx-empty"><i class="bi bi-journal-text"></i> No activity recorded in this period.</p></section>{% endif %}
+  <section class="dx-kpis dx-kpis-wide">
+    {{ stat('blue', 'activity', 'Events', ai.total, ai.active_users ~ (' active user' if ai.active_users == 1 else ' active users')) }}
+    {{ stat('green', 'box-arrow-in-right', 'Sign-ins', ai.logins, 'Successful logins') }}
+    {{ stat('red' if ai.failed_logins else 'teal', 'shield-exclamation', 'Failed sign-ins', ai.failed_logins, 'Wrong password or locked out') }}
+    {{ stat('gold', 'exclamation-triangle', 'Sensitive actions', ai.sensitive, 'Reversals, deletions, exports, admin') }}
+    {{ stat('violet', 'download', 'Exports', ai.exports, 'Data downloaded as files') }}
+    {{ stat('gold' if ai.night_events else 'teal', 'moon-stars', 'After-hours changes', ai.night_events, 'Between 10pm and 5am') }}
+  </section>
+  <section class="dx-grid">
+    <div class="dx-card dx-span-8">
+      <div class="dx-card-head"><h3><i class="bi bi-bar-chart-line"></i> Activity over time</h3><span class="dx-muted">events per {{ ai.series.granularity }}</span></div>
+      <div class="dx-chart dx-chart-sm"><canvas id="auTrend"></canvas></div>
+    </div>
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-stars"></i> What stands out</h3></div>
+      {{ insights(ai.insights, 'Insights appear as activity is recorded.') }}
+    </div>
+  </section>
+  <section class="dx-grid">
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-clock"></i> Busiest hours</h3><span class="dx-muted">red = 10pm to 5am</span></div>
+      <div class="dx-chart dx-chart-sm"><canvas id="auHours"></canvas></div>
+    </div>
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-diagram-3"></i> What people do</h3></div>
+      {% if ai.categories %}<div class="dx-donut"><canvas id="auCats"></canvas></div>
+      <ul class="dx-legend">{% for c in ai.categories %}<li><i class="au-dot" data-i="{{ loop.index0 }}"></i><span>{{ c.name }}</span><strong>{{ c.count }}</strong></li>{% endfor %}</ul>
+      {% else %}<p class="dx-empty"><i class="bi bi-diagram-3"></i> Nothing yet.</p>{% endif %}
+    </div>
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-list-ol"></i> Most common actions</h3></div>
+      {% if ai.top_actions %}<ol class="dx-bars">{% set top = ai.top_actions[0].count or 1 %}
+        {% for a in ai.top_actions %}<li><div class="dx-bar-row"><span>{{ a.action }}</span><strong>{{ a.count }}</strong></div><div class="dx-bar"><span style="width:{{ (a.count / top * 100)|round(1) }}%"></span></div></li>{% endfor %}</ol>
+      {% else %}<p class="dx-empty"><i class="bi bi-list-ol"></i> Nothing yet.</p>{% endif %}
+    </div>
+  </section>
+  <section class="dx-grid">
+    <div class="dx-card dx-span-7">
+      <div class="dx-card-head"><h3><i class="bi bi-people"></i> By user</h3></div>
+      {% if ai.users %}
+      <div class="dx-table-wrap"><table class="dx-table">
+        <thead><tr><th>User</th><th class="dx-num">Events</th><th class="dx-num">Sign-ins</th><th class="dx-num">Failed</th><th class="dx-num">Sensitive</th><th>Last active</th></tr></thead>
+        <tbody>{% for u in ai.users %}<tr>
+          <td data-label="User"><strong>{{ u.user }}</strong></td><td data-label="Events" class="dx-num">{{ u.events }}</td><td data-label="Sign-ins" class="dx-num">{{ u.logins }}</td>
+          <td data-label="Failed" class="dx-num {{ 'dx-neg' if u.failed }}">{{ u.failed }}</td><td data-label="Sensitive" class="dx-num">{{ u.sensitive }}</td><td data-label="Last active">{{ u.last or '—' }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+      {% else %}<p class="dx-empty"><i class="bi bi-people"></i> No users active in this period.</p>{% endif %}
+    </div>
+    <div class="dx-card dx-span-5">
+      <div class="dx-card-head"><h3><i class="bi bi-exclamation-triangle"></i> Recent sensitive actions</h3></div>
+      {% if ai.recent_sensitive %}
+      <ul class="dx-feed">{% for s in ai.recent_sensitive %}<li><span class="dx-dot dx-dot-purchase"></span><div><strong>{{ s.action }} · {{ s.user }}</strong><small>{{ s.when }}{% if s.reference %} · {{ s.reference }}{% endif %}</small></div></li>{% endfor %}</ul>
+      {% else %}<p class="dx-empty"><i class="bi bi-shield-check"></i> No sensitive actions in this period.</p>{% endif %}
+    </div>
+  </section>
+</div>
+</section>
+<script id="auData" type="application/json">{{ {'series': ai.series, 'hours': ai.hours, 'cats': ai.categories}|tojson }}</script>
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/dx.js') }}"></script>
+<script>
+(function () {
+  const data = JSON.parse(document.getElementById('auData').textContent);
+  DX.tabs({ initial: {{ ('insights' if insights_requested else '')|tojson }}, onFirstShow: { insights: initCharts } });
+  function initCharts() {
+    const { make, scales, palette, dark } = DX;
+    make('auTrend', { type: 'bar', data: { labels: data.series.labels, datasets: [{ label: 'Events', data: data.series.events, backgroundColor: 'rgba(37,99,235,0.75)', borderRadius: 4 }] },
+      options: { plugins: { legend: { display: false } }, scales: scales() } });
+    make('auHours', { type: 'bar', data: { labels: data.hours.map((_, h) => h), datasets: [{ label: 'Events', data: data.hours, backgroundColor: data.hours.map((_, h) => (h >= 22 || h < 5) ? 'rgba(220,38,38,0.75)' : 'rgba(22,163,74,0.75)'), borderRadius: 3 }] },
+      options: { plugins: { legend: { display: false } }, scales: scales() } });
+    if (data.cats.length) {
+      make('auCats', { type: 'doughnut', data: { labels: data.cats.map(c => c.name), datasets: [{ data: data.cats.map(c => c.count), backgroundColor: data.cats.map((_, i) => palette[i % palette.length]), borderWidth: 2, borderColor: dark() ? '#182820' : '#fff' }] },
+        options: { cutout: '66%', plugins: { legend: { display: false } } } });
+      document.querySelectorAll('.au-dot').forEach(el => { el.style.background = palette[Number(el.dataset.i) % palette.length]; });
+    }
+  }
+})();
+</script>
 <script>
 const selectAllLogs = document.getElementById('selectAllLogs');
 const bulkActionsBar = document.getElementById('bulkActionsBar');

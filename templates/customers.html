@@ -1,200 +1,363 @@
 {% extends "base.html" %}
 {% block title %}Customers – ADUFARMS{% endblock %}
 {% block content %}
+{% from "_dx.html" import chip, stat, insights, tab_bar with context %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='dx-6') }}">
+{% set k = ci.kpis %}
+{% set qs = {} %}{% for key, value in filters.items() %}{% if value %}{% set _ = qs.update({key: value}) %}{% endif %}{% endfor %}
+{% set filtered = qs|length > 0 %}
+
 <div class="ops-module ops-module-customers">
 <span id="new" class="anchor-target" aria-hidden="true"></span>
 {% if session.get('role') == 'ADMIN' %}
-<div class="d-flex justify-content-end mb-3">
-  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('deleted_records') }}">
-    <i class="bi bi-archive me-1"></i>Recycle bin
-  </a>
+<div class="d-flex justify-content-end mb-2">
+  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('deleted_records') }}"><i class="bi bi-archive me-1"></i>Recycle bin</a>
 </div>
 {% endif %}
 
-<div class="dashboard-heading">
-  <div>
-    <h2>Customer Directory &amp; Credit Ledgers</h2>
-    <p>Maintain verified wholesale buyers, manage grain delivery contacts, and track receivables.</p>
-  </div>
-</div>
+{% set at_risk = (ci.segments|selectattr('key', 'equalto', 'at_risk')|first).count %}
+{{ tab_bar([('record', 'person-plus', 'Add customer', none), ('directory', 'people', 'Directory', k.total), ('insights', 'graph-up-arrow', 'Insights', none)],
+           (at_risk ~ ' customer' ~ ('s' if at_risk != 1 else '') ~ ' to call') if at_risk else '') }}
 
-<div class="card mb-4">
-  <div class="card-body">
-    <h5 class="card-title mb-3"><i class="bi bi-person-plus text-primary me-1"></i>Add New Customer</h5>
-    <form method="post" class="smart-form">
-      {{ csrf_input() }}
-      <div class="row g-3">
-        <div class="col-md-3">
-          <label class="form-label">Customer / Business Name <span class="required-mark">*</span></label>
-          <input name="name" class="form-control" placeholder="e.g. Ama Serwaa Grains" required>
+<!-- ============ ADD ============ -->
+<section id="tab-record" class="dx-panel">
+  <div class="row g-3">
+    <div class="col-xl-8">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title mb-3"><i class="bi bi-person-plus text-primary me-1"></i>Add New Customer</h5>
+          <form method="post" class="smart-form" id="customerForm" autocomplete="off">
+            {{ csrf_input() }}
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label">Customer / Business Name <span class="required-mark">*</span></label>
+                <input name="name" class="form-control" placeholder="e.g. Ama Serwaa Grains" required>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Phone Number</label>
+                <input name="phone" class="form-control" placeholder="e.g. 0244123456" inputmode="tel">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Market Location</label>
+                <input name="location" class="form-control" placeholder="e.g. Kumasi Kejetia">
+              </div>
+              <div class="col-md-2">
+                <label class="form-label">Type</label>
+                <select name="customer_type" class="form-select">
+                  <option value="WHOLESALE">WHOLESALE</option>
+                  <option value="RETAIL" selected>RETAIL</option>
+                  <option value="INSTITUTION">INSTITUTION</option>
+                  <option value="OTHER">OTHER</option>
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Opening Balance (GH₵)</label>
+                <input name="opening_balance" type="number" min="0" step="0.01" value="0" class="form-control">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Delivery Address / Stall No.</label>
+                <input name="address" class="form-control" placeholder="e.g. Stall B-14, Central Market">
+              </div>
+              <div class="col-md-5">
+                <label class="form-label">Notes &amp; Terms</label>
+                <input name="notes" class="form-control" placeholder="e.g. Bulk yellow maize aggregator, 14-day credit">
+              </div>
+              <div class="col-12 pt-2 d-flex align-items-center flex-wrap gap-3">
+                <button class="btn btn-primary" type="submit"><i class="bi bi-arrow-right-circle-fill me-1"></i> Register Customer &amp; Proceed to Sales</button>
+                <span class="text-muted small"><i class="bi bi-info-circle me-1"></i>Saving will go straight to recording a sale with this customer pre-selected.</span>
+              </div>
+            </div>
+          </form>
         </div>
-        <div class="col-md-2">
-          <label class="form-label">Phone Number</label>
-          <input name="phone" class="form-control" placeholder="e.g. 0244123456">
-        </div>
-        <div class="col-md-2">
-          <label class="form-label">Market Location</label>
-          <input name="location" class="form-control" placeholder="e.g. Kumasi Kejetia">
-        </div>
-        <div class="col-md-2">
-          <label class="form-label">Customer Type</label>
-          <select name="customer_type" class="form-select">
-            <option value="WHOLESALE">WHOLESALE</option>
-            <option value="RETAIL" selected>RETAIL</option>
-            <option value="INSTITUTION">INSTITUTION</option>
-            <option value="OTHER">OTHER</option>
-          </select>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label">Opening Balance (GH₵)</label>
-          <input name="opening_balance" type="number" min="0" step="0.01" value="0" class="form-control">
-        </div>
-        <div class="col-md-6">
-          <label class="form-label">Delivery Address / Stall No.</label>
-          <input name="address" class="form-control" placeholder="e.g. Stall B-14, Central Market">
-        </div>
-        <div class="col-md-6">
-          <label class="form-label">Notes &amp; Terms</label>
-          <input name="notes" class="form-control" placeholder="e.g. Bulk yellow maize aggregator, 14-day credit">
-        </div>
-        <div class="col-12 pt-2 d-flex align-items-center flex-wrap gap-3">
-          <button class="btn btn-primary" type="submit">
-            <i class="bi bi-arrow-right-circle-fill me-1"></i> Register Customer &amp; Proceed to Sales
-          </button>
-          <span class="text-muted small">
-            <i class="bi bi-info-circle me-1"></i>Saving this customer will proceed directly to record a sale with the customer pre-selected.
-          </span>
-        </div>
-      </div>
-    </form>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card-body">
-    <div class="panel-title d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <div class="d-flex align-items-center gap-2">
-        <span class="section-tag section-tag-customer"><i class="bi bi-people-fill me-1"></i> Customer Directory</span>
-        <h5 class="mb-0">Customer Accounts ({{ total_customers }})</h5>
-      </div>
-      <input class="form-control form-control-sm" data-table-search="#customersTable" placeholder="Search customers..." style="max-width:280px">
-    </div>
-    {% if page_count > 1 %}
-    <div class="d-flex justify-content-between align-items-center mt-3 mb-2 text-muted small">
-      <span>Page {{ page }} of {{ page_count }}</span>
-      <div class="btn-group btn-group-sm">
-        {% if page > 1 %}
-        <a class="btn btn-outline-secondary" href="{{ url_for('customers', page=page-1) }}">Previous</a>
-        {% endif %}
-        {% if page < page_count %}
-        <a class="btn btn-outline-secondary" href="{{ url_for('customers', page=page+1) }}">Next</a>
-        {% endif %}
       </div>
     </div>
-    {% endif %}
-    <div class="table-responsive">
-      <table id="customersTable" class="table table-hover align-middle">
-        <thead>
-          <tr>
-            <th style="width:48px;" class="text-center">#</th>
-            <th>Customer</th>
-            <th>Contact &amp; Location</th>
-            <th>Type</th>
-            <th class="text-end">Total Billed</th>
-            <th class="text-end">Total Paid</th>
-            <th class="text-end">Outstanding Debt</th>
-            <th class="text-center">Status</th>
-            <th class="text-end">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in rows %}
-          {% set billed = row.total_sales + row.opening_balance %}
-          {% set balance = billed - row.total_paid %}
-          <tr class="customer-row-accent {{ row.name|customer_theme }}">
-            <td class="text-center">
-              <span class="table-seq-num">{{ loop.index }}</span>
-            </td>
-            <td>
-              <div class="customer-chip">
-                <span class="customer-avatar {{ row.name|customer_theme }}">
-                  {{ row.name|customer_initials }}
-                </span>
-                <div>
-                  <strong class="text-dark">{{ row.name }}</strong>
-                  {% if row.address %}
-                  <small class="d-block text-muted">{{ row.address }}</small>
-                  {% endif %}
+    <div class="col-xl-4">
+      <div class="card dx-check" id="dupCheck">
+        <div class="card-body">
+          <h6 class="dx-check-title"><i class="bi bi-person-check"></i> Duplicate check</h6>
+          <p class="dx-check-empty" id="dupEmpty">Type a name or phone and I will tell you if this customer is already registered.</p>
+          <ul class="dx-flags" id="dupList"></ul>
+        </div>
+      </div>
+      <div class="card dx-restock mt-3">
+        <div class="card-body">
+          <h6 class="dx-check-title"><i class="bi bi-people"></i> Your customer base</h6>
+          <ul class="dx-legend">
+            <li><i style="background:#16a34a"></i><span>Registered</span><strong>{{ k.total }}</strong></li>
+            <li><i style="background:#2563eb"></i><span>Bought in last 90 days</span><strong>{{ k.active90 }}</strong></li>
+            <li><i style="background:#d97706"></i><span>New in last 30 days</span><strong>{{ k.new30 }}</strong></li>
+            <li><i style="background:#dc2626"></i><span>Total owed to you</span><strong>{{ k.receivables|money }}</strong></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DIRECTORY ============ -->
+<section id="tab-directory" class="dx-panel" hidden>
+  <div class="card">
+    <div class="card-body">
+      <form class="dx-filters" method="get" action="{{ url_for('customers') }}">
+        <input type="search" class="form-control form-control-sm" name="q" value="{{ filters.q }}" placeholder="Search name, phone, location...">
+        <select class="form-select form-select-sm" name="type">
+          <option value="">All types</option>
+          {% for t in ('WHOLESALE', 'RETAIL', 'INSTITUTION', 'OTHER') %}<option value="{{ t }}" {{ 'selected' if filters.type == t }}>{{ t|title }}</option>{% endfor %}
+        </select>
+        <select class="form-select form-select-sm" name="segment">
+          <option value="">All segments</option>
+          {% for key, meta in segments.items() %}<option value="{{ key }}" {{ 'selected' if filters.segment == key }}>{{ meta[0] }}</option>{% endfor %}
+        </select>
+        <label class="dx-check-inline"><input type="checkbox" name="owing" value="1" {{ 'checked' if filters.owing }}> Owing only</label>
+        <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-funnel"></i> Filter</button>
+        {% if filtered %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('customers') }}#directory">Reset</a>{% endif %}
+        {% if can_export %}<a class="btn btn-sm btn-outline-success ms-auto" href="{{ url_for('customers_export', **qs) }}"><i class="bi bi-download"></i> Export CSV</a>{% endif %}
+      </form>
+      <div class="dx-summary">
+        <span><strong>{{ total_customers }}</strong> customer{{ '' if total_customers == 1 else 's' }}{% if filtered %} match{% endif %}</span>
+        <span><strong>{{ rows|sum(attribute='revenue')|money }}</strong> lifetime sales</span>
+        <span class="{{ 'dx-neg' if rows|sum(attribute='balance') > 0.005 }}"><strong>{{ rows|sum(attribute='balance')|money }}</strong> outstanding</span>
+      </div>
+      <div class="table-responsive">
+        <table id="customersTable" class="table table-hover align-middle sortable">
+          <thead>
+            <tr>
+              <th style="width:48px;" class="text-center">#</th>
+              <th data-sort>Customer</th>
+              <th data-sort>Segment</th>
+              <th data-sort>Contact &amp; Location</th>
+              <th data-sort>Type</th>
+              <th data-sort class="text-end">Total Billed</th>
+              <th data-sort class="text-end">Total Paid</th>
+              <th data-sort class="text-end">Outstanding</th>
+              <th data-sort class="text-center">Credit</th>
+              <th data-sort>Last bought</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr class="customer-row-accent {{ row.name|customer_theme }}">
+              <td class="text-center"><span class="table-seq-num">{{ (page - 1) * per_page + loop.index }}</span></td>
+              <td>
+                <div class="customer-chip">
+                  <span class="customer-avatar {{ row.name|customer_theme }}">{{ row.name|customer_initials }}</span>
+                  <div>
+                    <strong class="text-dark">{{ row.name }}</strong>
+                    {% if row.address %}<small class="d-block text-muted">{{ row.address }}</small>{% endif %}
+                  </div>
                 </div>
-              </div>
-            </td>
-            <td>
-              <div><i class="bi bi-telephone text-muted me-1"></i>{{ row.phone or '-' }}</div>
-              {% if row.location %}
-              <small class="text-muted"><i class="bi bi-geo-alt me-1"></i>{{ row.location }}</small>
-              {% endif %}
-            </td>
-            <td>
-              {{ row.customer_type|customer_type_badge }}
-            </td>
-            <td class="text-end fw-bold">{{ billed|money }}</td>
-            <td class="text-end text-success fw-bold">{{ row.total_paid|money }}</td>
-            <td class="text-end">
-              <div class="d-flex flex-column align-items-end gap-1">
-                <span class="fw-bold">{{ balance|money }}</span>
-                {{ balance|customer_balance_badge }}
-              </div>
-            </td>
-            <td class="text-center">
-              {% if row.active == 0 %}
-                <span class="status-pill status-pill-reversed">Inactive</span>
-              {% else %}
-                <span class="status-pill status-pill-active"><i class="bi bi-check2 me-1"></i>Active</span>
-              {% endif %}
-            </td>
-            <td class="text-end">
-              <div class="btn-group btn-group-sm">
-                <a class="btn btn-outline-primary" href="{{ url_for('customer_statement', customer_id=row.id) }}" title="View statement">
-                  <i class="bi bi-file-earmark-text me-1"></i>Statement
-                </a>
-                <a class="btn btn-outline-success" href="{{ url_for('payments', customer_id=row.id) }}" title="Record payment">
-                  <i class="bi bi-wallet2"></i>
-                </a>
-                <a class="btn btn-outline-dark" href="{{ url_for('invoice', customer=row.name) }}" title="View invoices">
-                  <i class="bi bi-receipt"></i>
-                </a>
-                {% if session.get('role') == 'ADMIN' %}
-                <a class="btn btn-outline-secondary" href="{{ url_for('edit_customer', customer_id=row.id) }}" title="Edit customer">
-                  <i class="bi bi-pencil"></i>
-                </a>
-                <button type="button" class="btn btn-outline-danger" title="Delete customer"
-                        data-bs-toggle="modal" data-bs-target="#deleteTransactionModal"
-                        data-delete-url="{{ url_for('delete_customer', customer_id=row.id) }}"
-                        data-delete-id="{{ row.id }}"
-                        data-delete-type="Customer"
-                        data-delete-party="{{ row.name }}"
-                        data-delete-amount="{{ balance|money }}"
-                        data-delete-date="{{ row.created_at|pretty_date }}">
-                  <i class="bi bi-trash3"></i>
-                </button>
-                {% endif %}
-              </div>
-            </td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="9">
-              <div class="empty-state">
-                <i class="bi bi-people"></i>
-                No customers have been registered yet.
-              </div>
-            </td>
-          </tr>
+              </td>
+              <td><span class="dx-pill dx-pill-{{ row.segment_tone }}" title="{{ row.segment_hint }}">{{ row.segment_label }}</span></td>
+              <td>
+                <div><i class="bi bi-telephone text-muted me-1"></i>{{ row.phone or '-' }}</div>
+                {% if row.location %}<small class="text-muted"><i class="bi bi-geo-alt me-1"></i>{{ row.location }}</small>{% endif %}
+              </td>
+              <td>{{ row.type|customer_type_badge }}</td>
+              <td class="text-end fw-bold">{{ row.billed|money }}</td>
+              <td class="text-end text-success fw-bold">{{ row.paid|money }}</td>
+              <td class="text-end">
+                <div class="d-flex flex-column align-items-end gap-1">
+                  <span class="fw-bold">{{ row.balance|money }}</span>
+                  {{ row.balance|customer_balance_badge }}
+                </div>
+              </td>
+              <td class="text-center">
+                {% if row.score is not none %}<span class="dx-pill {{ 'dx-pill-good' if row.score >= 65 else 'dx-pill-warn' if row.score >= 45 else 'dx-pill-bad' }}" title="{{ row.rating }}{% if row.days_to_pay is not none %} · pays in ~{{ '%.0f'|format(row.days_to_pay) }} days{% endif %}">{{ row.score }}</span>{% else %}<span class="dx-muted">—</span>{% endif %}
+              </td>
+              <td>{% if row.last_sale %}{{ row.last_sale.isoformat()|short_date }}<small class="d-block text-muted">{{ row.days_since }} day{{ '' if row.days_since == 1 else 's' }} ago</small>{% else %}<span class="dx-muted">never</span>{% endif %}</td>
+              <td class="text-end text-nowrap">
+                <a class="btn btn-sm btn-outline-primary customer-view-btn" href="{{ url_for('customer_statement', customer_id=row.id) }}" title="View statement" aria-label="View statement for {{ row.name }}"><i class="bi bi-eye"></i></a>
+                <span class="dropdown d-inline-block">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" title="More actions" aria-label="More actions for {{ row.name }}" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false"><i class="bi bi-three-dots"></i></button>
+                  <ul class="dropdown-menu dropdown-menu-end customer-actions-menu">
+                    <li><a class="dropdown-item" href="{{ url_for('sales', customer_id=row.id) }}"><i class="bi bi-cart-plus me-2"></i>New sale</a></li>
+                    <li><a class="dropdown-item" href="{{ url_for('payments', customer_id=row.id) }}"><i class="bi bi-wallet2 me-2"></i>Record payment</a></li>
+                    <li><a class="dropdown-item" href="{{ url_for('invoice', customer=row.name) }}"><i class="bi bi-receipt me-2"></i>View invoices</a></li>
+                    {% if session.get('role') == 'ADMIN' %}
+                    <li><a class="dropdown-item" href="{{ url_for('edit_customer', customer_id=row.id) }}"><i class="bi bi-pencil me-2"></i>Edit customer</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><button type="button" class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#deleteTransactionModal"
+                            data-delete-url="{{ url_for('delete_customer', customer_id=row.id) }}" data-delete-id="{{ row.id }}" data-delete-type="Customer"
+                            data-delete-party="{{ row.name }}" data-delete-amount="{{ row.balance|money }}" data-delete-date="{{ row.created_at|pretty_date }}">
+                      <i class="bi bi-trash3 me-2"></i>Delete customer</button></li>
+                    {% endif %}
+                  </ul>
+                </span>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="11">
+                <div class="empty-state"><i class="bi bi-people"></i>{% if filtered %}No customers match these filters.{% else %}No customers have been registered yet.{% endif %}<br>
+                  <a href="{{ url_for('customers') }}{{ '#directory' if filtered else '#new' }}" class="btn btn-sm btn-primary mt-2">{{ 'Clear filters' if filtered else 'Add the first customer' }}</a></div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+        <small class="text-muted">Showing {{ ((page - 1) * per_page + 1) if total_customers else 0 }} – {{ [page * per_page, total_customers]|min }} of {{ total_customers }} customers</small>
+        {% if page_count > 1 %}
+        {% set ns = namespace(pages=[]) %}
+        {% for p in [1, page - 2, page - 1, page, page + 1, page + 2, page_count] %}{% if p >= 1 and p <= page_count and p not in ns.pages %}{% set _ = ns.pages.append(p) %}{% endif %}{% endfor %}
+        <nav class="customer-pager" aria-label="Customer pages">
+          {% if page > 1 %}<a class="page-nav" href="{{ url_for('customers', page=page-1, **qs) }}#directory" aria-label="Previous page"><i class="bi bi-chevron-left"></i></a>{% endif %}
+          {% set last = namespace(v=0) %}
+          {% for p in ns.pages|sort %}
+          {% if p - last.v > 1 %}<span class="page-gap">…</span>{% endif %}
+          {% if p == page %}<span class="page-num active" aria-current="page">{{ p }}</span>{% else %}<a class="page-num" href="{{ url_for('customers', page=p, **qs) }}#directory">{{ p }}</a>{% endif %}
+          {% set last.v = p %}
           {% endfor %}
-        </tbody>
-      </table>
+          {% if page < page_count %}<a class="page-nav" href="{{ url_for('customers', page=page+1, **qs) }}#directory" aria-label="Next page"><i class="bi bi-chevron-right"></i></a>{% endif %}
+        </nav>
+        {% endif %}
+      </div>
     </div>
   </div>
+</section>
+
+<!-- ============ INSIGHTS ============ -->
+<section id="tab-insights" class="dx-panel" hidden>
+<div class="dx">
+  <section class="dx-header" style="--dx-hero:url('{{ url_for('static', filename='images/ghana/customers.svg') }}')">
+    <div class="dx-header-copy">
+      <span class="dx-eyebrow"><i class="bi bi-people"></i> {{ k.total }} registered · {{ k.buyers }} have bought</span>
+      <h2>Customer insights</h2>
+      <p>Who your best customers are, who is slipping away, and who owes you money.</p>
+    </div>
+  </section>
+
+  <section class="dx-kpis dx-kpis-wide">
+    {{ stat('green', 'people', 'Active customers', k.active90, 'Bought in the last 90 days') }}
+    {{ stat('blue', 'person-plus', 'New customers', k.new30, 'First purchase in last 30 days') }}
+    {{ stat('gold', 'gem', 'Avg. lifetime value', (k.avg_ltv|money) if k.avg_ltv is not none else '—', 'Sales per buying customer') }}
+    {{ stat('violet', 'arrow-repeat', 'Repeat customers', ('%.0f%%'|format(k.repeat_rate * 100)) if k.repeat_rate is not none else '—', 'Bought 2+ times') }}
+    {{ stat('red', 'hourglass-split', 'Owed to you', k.receivables|money, 'Across all customers') }}
+    {{ stat('teal', 'shield-check', 'Avg. credit score', ('%.0f / 100'|format(k.avg_score)) if k.avg_score is not none else '—', 'Payment behaviour') }}
+  </section>
+
+  <section class="dx-grid">
+    <div class="dx-card dx-span-8">
+      <div class="dx-card-head"><h3><i class="bi bi-diagram-3"></i> Customer segments</h3><span class="dx-muted">click one to open it in the directory</span></div>
+      <div class="dx-segments">
+        {% for s in ci.segments %}
+        <a class="dx-seg dx-seg-{{ s.tone }}" href="{{ url_for('customers', segment=s.key) }}#directory">
+          <strong>{{ s.count }}</strong><span>{{ s.label }}</span><small>{{ s.hint }}</small>
+          <em>{{ s.revenue|money }}{% if s.owed > 0.005 %} · owes {{ s.owed|money }}{% endif %}</em>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-stars"></i> What stands out</h3></div>
+      {{ insights(ci.insights, 'Insights appear as you add customers and record sales.') }}
+    </div>
+  </section>
+
+  <section class="dx-grid">
+    <div class="dx-card dx-span-7">
+      <div class="dx-card-head"><h3><i class="bi bi-bar-chart-steps"></i> New vs returning customers' sales</h3><span class="dx-muted">last 6 months</span></div>
+      <div class="dx-chart dx-chart-sm"><canvas id="ciCohort"></canvas></div>
+    </div>
+    <div class="dx-card dx-span-5">
+      <div class="dx-card-head"><h3><i class="bi bi-telephone-outbound"></i> Customers to call</h3><span class="dx-muted">quiet for longer than usual</span></div>
+      {% if ci.call_list %}
+      <ul class="dx-feed">
+        {% for p in ci.call_list %}
+        <li><span class="dx-dot dx-dot-purchase"></span>
+          <div><strong><a href="{{ url_for('customer_statement', customer_id=p.id) }}">{{ p.name }}</a>{% if p.phone %} · {{ p.phone }}{% endif %}</strong>
+          <small>Usually buys every ~{{ '%.0f'|format(p.usual_interval) }} days · silent for {{ p.days_since }} · lifetime {{ p.revenue|money }}</small></div></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="dx-empty"><i class="bi bi-emoji-smile"></i> No regular customer has gone quiet.</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="dx-grid">
+    <div class="dx-card dx-span-6">
+      <div class="dx-card-head"><h3><i class="bi bi-cash-stack"></i> Who owes you</h3><span class="dx-muted">with their credit score</span></div>
+      {% if ci.top_debtors %}
+      <div class="dx-table-wrap">
+        <table class="dx-table">
+          <thead><tr><th>Customer</th><th class="dx-num">Owes</th><th>Oldest</th><th class="dx-num">Score</th></tr></thead>
+          <tbody>
+            {% for p in ci.top_debtors %}
+            <tr>
+              <td data-label="Customer"><a href="{{ url_for('customer_statement', customer_id=p.id) }}"><strong>{{ p.name }}</strong></a><small>{{ p.unpaid_sales }} unpaid sale{{ '' if p.unpaid_sales == 1 else 's' }}</small></td>
+              <td data-label="Owes" class="dx-num dx-neg">{{ p.balance|money }}</td>
+              <td data-label="Oldest">{% if p.oldest_unpaid %}<span class="dx-pill {{ 'dx-pill-bad' if p.oldest_unpaid > 60 else 'dx-pill-warn' if p.oldest_unpaid > 30 else 'dx-pill-good' }}">{{ p.oldest_unpaid }} days</span>{% else %}<span class="dx-muted">opening balance</span>{% endif %}</td>
+              <td data-label="Score" class="dx-num">{% if p.score is not none %}<span class="dx-pill {{ 'dx-pill-good' if p.score >= 65 else 'dx-pill-warn' if p.score >= 45 else 'dx-pill-bad' }}">{{ p.score }}</span>{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<p class="dx-empty"><i class="bi bi-check-circle"></i> Nobody owes you anything.</p>{% endif %}
+    </div>
+    <div class="dx-card dx-span-6">
+      <div class="dx-card-head"><h3><i class="bi bi-trophy"></i> Top customers, lifetime</h3><span class="dx-muted">class A = first 80% of revenue</span></div>
+      {% if ci.top_customers %}
+      <ol class="dx-bars">
+        {% for p in ci.top_customers %}
+        <li>
+          <div class="dx-bar-row"><a href="{{ url_for('customer_statement', customer_id=p.id) }}">{{ p.name }}</a><strong>{{ p.revenue|money }}</strong></div>
+          <div class="dx-bar"><span style="width:{{ (p.share * 100)|round(1) }}%"></span></div>
+          <small>{{ (p.share * 100)|round(0)|int }}% · {{ p.orders }} order{{ '' if p.orders == 1 else 's' }} · class {{ p.abc }} · <span class="dx-pill dx-pill-{{ p.segment_tone }}">{{ p.segment_label }}</span></small>
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}<p class="dx-empty"><i class="bi bi-people"></i> No sales recorded yet.</p>{% endif %}
+    </div>
+  </section>
+  <p class="dx-foot">Segments and credit scores are calculated from sales and payment history as of today. Credit score = 30% payment speed, 30% overdue age, 20% share still owed, 20% sales paid in full.</p>
 </div>
+</section>
 </div>
+
+<script id="ciData" type="application/json">{{ {'cohort': ci.cohort, 'known': known}|tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dx.js') }}"></script>
+<script>
+(function () {
+  const data = JSON.parse(document.getElementById('ciData').textContent);
+  const $ = s => document.querySelector(s);
+  DX.tabs({ initial: {{ ('directory' if request.args.get('page') or request.args.get('q') or request.args.get('type') or request.args.get('segment') or request.args.get('owing') else '')|tojson }},
+            onFirstShow: { insights: initCharts } });
+
+  /* ---- live duplicate check ---- */
+  const digits = v => (v || '').replace(/\D/g, '').replace(/^233/, '0');
+  const clean = v => (v || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  function dupCheck() {
+    const name = clean($('#customerForm [name=name]').value), phone = digits($('#customerForm [name=phone]').value);
+    const list = $('#dupList'), empty = $('#dupEmpty');
+    if (name.length < 2 && phone.length < 6) { list.innerHTML = ''; empty.hidden = false; return; }
+    empty.hidden = true;
+    const tokens = new Set(name.split(' ').filter(Boolean));
+    const hits = data.known.map(c => {
+      const cn = clean(c.name), cp = digits(c.phone), ct = new Set(cn.split(' ').filter(Boolean));
+      const samePhone = phone.length >= 6 && cp && cp === phone;
+      const sameName = name && cn === name;
+      const overlap = tokens.size && Array.from(tokens).every(t => ct.has(t)) || (name.length >= 3 && cn.includes(name)) ;
+      return { c, level: samePhone ? 3 : sameName ? 3 : overlap ? 1 : 0, samePhone, sameName };
+    }).filter(h => h.level).sort((a, b) => b.level - a.level).slice(0, 4);
+    list.innerHTML = hits.length ? hits.map(h => '<li class="dx-flag dx-flag-' + (h.level >= 3 ? 'bad' : 'warn') + '"><i class="bi bi-person-exclamation"></i><span><strong>' + h.c.name.replace(/</g, '&lt;') + '</strong>' +
+        (h.c.phone ? ' · ' + h.c.phone : '') + '<br>' + (h.samePhone ? 'Same phone number. ' : h.sameName ? 'Same name. ' : 'Similar name. ') +
+        '<a href="/sales?customer_id=' + h.c.id + '">Record a sale for them instead</a></span></li>').join('')
+      : '<li class="dx-flag dx-flag-good"><i class="bi bi-check-circle"></i><span>No existing customer matches. Safe to register.</span></li>';
+  }
+  document.querySelectorAll('#customerForm [name=name], #customerForm [name=phone]').forEach(i => i.addEventListener('input', dupCheck));
+
+  function initCharts() {
+    const { make, scales, money } = DX, c = data.cohort;
+    make('ciCohort', { type: 'bar', data: { labels: c.labels, datasets: [
+        { label: 'New customers', data: c.new, backgroundColor: 'rgba(37,99,235,0.8)', borderRadius: 4, stack: 's' },
+        { label: 'Returning customers', data: c.returning, backgroundColor: 'rgba(22,163,74,0.78)', borderRadius: 4, stack: 's' }] },
+      options: { scales: scales({ x: { stacked: true, grid: { display: false }, ticks: { color: DX.ink() } }, y: { stacked: true, beginAtZero: true, grid: { color: DX.grid() }, ticks: { color: DX.ink(), callback: DX.num } } }),
+        plugins: { tooltip: { callbacks: { label: x => x.dataset.label + ': ' + money(x.parsed.y), footer: items => { const i = items[0].dataIndex; return c.new_customers[i] + ' new customer' + (c.new_customers[i] === 1 ? '' : 's') + ' this month'; } } } } } });
+  }
+})();
+</script>
 {% endblock %}

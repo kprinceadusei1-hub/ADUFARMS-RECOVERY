@@ -12,7 +12,8 @@
 
   <div class="card assistant-card">
     <div class="card-body">
-      <form method="get" class="assistant-form">
+      <form method="post" class="assistant-form">
+        {{ csrf_input() }}
         <label class="form-label" for="assistantQuestion">Ask any operational or financial question</label>
         <div class="input-group">
           <span class="input-group-text"><i class="bi bi-search"></i></span>
@@ -28,6 +29,15 @@
         <a href="{{ url_for('assistant', question='What was our total procurement?') }}" class="btn btn-sm btn-outline-secondary rounded-pill me-1 mb-1">📦 Procurement Summary</a>
         <a href="{{ url_for('assistant', question='Who are our top customers?') }}" class="btn btn-sm btn-outline-secondary rounded-pill me-1 mb-1">👥 Top Customers</a>
         <a href="{{ url_for('assistant', question='What is our activity this month?') }}" class="btn btn-sm btn-outline-secondary rounded-pill me-1 mb-1">📅 Monthly Overview</a>
+        <a href="{{ url_for('assistant', question='How is the business doing?') }}" class="btn btn-sm btn-outline-secondary rounded-pill me-1 mb-1">❤️ Business Health</a>
+        <a href="{{ url_for('assistant', question='Who should I call?') }}" class="btn btn-sm btn-outline-secondary rounded-pill me-1 mb-1">📞 Who To Call</a>
+        <a href="{{ url_for('assistant', question='Which supplier is best?') }}" class="btn btn-sm btn-outline-secondary rounded-pill me-1 mb-1">🚚 Best Supplier</a>
+        <a href="{{ url_for('assistant', question='How old is my stock?') }}" class="btn btn-sm btn-outline-secondary rounded-pill me-1 mb-1">⏳ Stock Age</a>
+        <a href="{{ url_for('assistant', question='When should I reorder?') }}" class="btn btn-sm btn-outline-secondary rounded-pill me-1 mb-1">🛒 Reorder Advice</a>
+        <a href="{{ url_for('assistant', question='What will we sell next month?') }}" class="btn btn-sm btn-outline-secondary rounded-pill me-1 mb-1">🔮 Sales Outlook</a>
+        <a href="{{ url_for('assistant', question='How fast do customers pay?') }}" class="btn btn-sm btn-outline-secondary rounded-pill me-1 mb-1">💳 Payment Speed</a>
+        <a href="{{ url_for('assistant', question='What price should I sell at?') }}" class="btn btn-sm btn-outline-secondary rounded-pill me-1 mb-1">🏷️ Pricing Guide</a>
+        <a href="{{ url_for('assistant', question='Who is our most profitable customer?') }}" class="btn btn-sm btn-outline-secondary rounded-pill me-1 mb-1">💎 Most Profitable</a>
       </div>
     </div>
   </div>

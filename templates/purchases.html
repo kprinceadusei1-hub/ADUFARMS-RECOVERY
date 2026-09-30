@@ -1,6 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Purchase – ADUFARMS{% endblock %}
+{% block title %}Purchases – ADUFARMS{% endblock %}
 {% block content %}
+{% from "_dx.html" import chip, stat, period_header, insights, tab_bar with context %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='dx-4') }}">
+{% set k = pa.kpis %}
+{% set fmt = '{:,.2f}' %}
+
+
+
 <div class="ops-module ops-module-purchases">
 <span id="new" class="anchor-target" aria-hidden="true"></span>
 {% if blocked_purchase %}
@@ -17,143 +24,379 @@
 </div>
 {% endif %}
 
-<div class="dashboard-heading">
-  <div>
-    <h2>Farm Intake &amp; Purchases</h2>
-    <p>Record maize from suppliers and local agents. Agent colors stay consistent across this ledger.</p>
-  </div>
-  <span class="status-badge status-paid"><i class="bi bi-box-seam"></i> GRAIN INTAKE</span>
+{{ tab_bar([('record', 'plus-circle', 'Record purchase', none), ('ledger', 'list-ul', 'Ledger', rows|length), ('analytics', 'graph-up-arrow', 'Analytics', none)],
+           'Restock due' if pa.reorder.urgent and pa.reorder.has_pace else '') }}
 </div>
 
-<div class="card mb-4">
-  <div class="card-body">
-    <form method="post" class="smart-form">
-      {{ csrf_input() }}
-      <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-calendar3"></i> Purchase information</div>
-        <div class="row g-3">
-          <div class="col-md-3"><label class="form-label">Purchase date <span class="required-mark">*</span></label><input type="date" class="form-control" name="purchase_date" value="{{today}}" required></div>
-          <div class="col-md-3"><label class="form-label">Supplier / local agent <span class="required-mark">*</span></label><input class="form-control" name="local_agent" placeholder="e.g. Kwame Mensah" required></div>
-          <div class="col-md-3"><label class="form-label">Agent phone</label><input class="form-control" name="agent_phone" placeholder="024 000 0000"></div>
-          <div class="col-md-3"><label class="form-label">Village / location</label><input class="form-control" name="location" placeholder="Origin location"></div>
+<!-- ============ RECORD ============ -->
+<section id="tab-record" class="dx-panel">
+  <div class="row g-3">
+    <div class="col-xl-8">
+      <div class="card">
+        <div class="card-body">
+          <form method="post" class="smart-form" id="purchaseForm" autocomplete="off">
+            {{ csrf_input() }}
+            <div class="form-section">
+              <div class="form-section-title"><i class="bi bi-calendar3"></i> Purchase information</div>
+              <div class="row g-3">
+                <div class="col-md-3"><label class="form-label">Purchase date <span class="required-mark">*</span></label><input type="date" class="form-control" name="purchase_date" value="{{today}}" max="{{today}}" required></div>
+                <div class="col-md-3"><label class="form-label">Supplier / local agent <span class="required-mark">*</span></label><input class="form-control" name="local_agent" list="supplierList" placeholder="e.g. Kwame Mensah" required>
+                  <datalist id="supplierList">{% for n in supplier_names %}<option value="{{ n }}">{% endfor %}</datalist></div>
+                <div class="col-md-3"><label class="form-label">Agent phone</label><input class="form-control" name="agent_phone" placeholder="024 000 0000"></div>
+                <div class="col-md-3"><label class="form-label">Village / location</label><input class="form-control" name="location" placeholder="Origin location"></div>
+              </div>
+              <div class="dx-hint" id="supplierHint" hidden></div>
+            </div>
+            <div class="form-section">
+              <div class="form-section-title"><i class="bi bi-box-seam"></i> Delivery information</div>
+              <div class="row g-3">
+                <div class="col-md-4"><label class="form-label">Quantity purchased (KG) <span class="required-mark">*</span></label><input type="number" step="0.01" min="0.01" class="form-control" name="quantity_kg" required data-calc="purchase-quantity"></div>
+                <div class="col-md-4"><label class="form-label">Quantity received in Accra (KG) <span class="required-mark">*</span></label>
+                  <div class="input-group"><input type="number" step="0.01" min="0" class="form-control" name="quantity_received_kg" required data-calc="purchase-received">
+                  <button type="button" class="btn btn-outline-secondary" id="sameQty" title="Everything arrived: copy the purchased quantity"><i class="bi bi-check2-all"></i> Same</button></div></div>
+              </div>
+            </div>
+            <div class="form-section">
+              <div class="form-section-title"><i class="bi bi-cash-stack"></i> Cost information</div>
+              <div class="row g-3">
+                <div class="col-md-3"><label class="form-label">Price per KG <span class="required-mark">*</span></label><input type="number" step="0.01" min="0" class="form-control" name="price_per_kg" required data-calc="purchase-price"></div>
+                <div class="col-md-3"><label class="form-label">Transport cost</label><input type="number" step="0.01" min="0" class="form-control" name="transport_cost" value="0" data-calc="purchase-transport"></div>
+                <div class="col-md-3"><label class="form-label">Other expenses</label><input type="number" step="0.01" min="0" class="form-control" name="other_expenses" value="0" data-calc="purchase-other"></div>
+                <div class="col-md-3"><div class="stat-label">Estimated total cost</div><div class="stat-value" id="purchaseTotal">GH₵0.00</div><div class="stat-support">Quantity x price + logistics</div></div>
+              </div>
+            </div>
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check2-circle me-1"></i> Save purchase</button>
+          </form>
         </div>
       </div>
-      <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-box-seam"></i> Delivery information</div>
-        <div class="row g-3">
-          <div class="col-md-4"><label class="form-label">Quantity purchased (KG) <span class="required-mark">*</span></label><input type="number" step="0.01" min="0.01" class="form-control" name="quantity_kg" required data-calc="purchase-quantity"></div>
-          <div class="col-md-4"><label class="form-label">Quantity received in Accra (KG) <span class="required-mark">*</span></label><input type="number" step="0.01" min="0" class="form-control" name="quantity_received_kg" required data-calc="purchase-received"></div>
+    </div>
+    <div class="col-xl-4">
+      <div class="card dx-check" id="purchaseCheck">
+        <div class="card-body">
+          <h6 class="dx-check-title"><i class="bi bi-clipboard-check"></i> Purchase check</h6>
+          <p class="dx-check-empty" id="checkEmpty">Fill in the quantities and price and I will check the real cost of this load and warn you about anything unusual.</p>
+          <dl class="dx-check-facts" id="checkFacts" hidden>
+            <div><dt>Total cost</dt><dd id="ckTotal">—</dd></div>
+            <div class="dx-big"><dt>Real cost per KG received</dt><dd id="ckLanded">—</dd></div>
+            <div><dt>Shortfall</dt><dd id="ckLoss">—</dd></div>
+            <div><dt>Transport &amp; other</dt><dd id="ckOverhead">—</dd></div>
+          </dl>
+          <ul class="dx-flags" id="checkFlags"></ul>
+          <div class="dx-ref" id="checkRef" hidden></div>
         </div>
       </div>
-      <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-cash-stack"></i> Cost information</div>
-        <div class="row g-3">
-          <div class="col-md-3"><label class="form-label">Price per KG <span class="required-mark">*</span></label><input type="number" step="0.01" min="0" class="form-control" name="price_per_kg" required data-calc="purchase-price"></div>
-          <div class="col-md-3"><label class="form-label">Transport cost</label><input type="number" step="0.01" min="0" class="form-control" name="transport_cost" value="0" data-calc="purchase-transport"></div>
-          <div class="col-md-3"><label class="form-label">Other expenses</label><input type="number" step="0.01" min="0" class="form-control" name="other_expenses" value="0" data-calc="purchase-other"></div>
-          <div class="col-md-3"><div class="stat-label">Estimated total cost</div><div class="stat-value" id="purchaseTotal">GH₵0.00</div><div class="stat-support">Quantity x price + logistics</div></div>
+      {% if pa.reorder.has_pace %}
+      <div class="card dx-restock mt-3">
+        <div class="card-body">
+          <h6 class="dx-check-title"><i class="bi bi-cart-plus"></i> Restock assistant</h6>
+          <p class="mb-2 small">{% if pa.reorder.cover_days is not none %}Stock lasts about <strong>{{ '%.0f'|format(pa.reorder.cover_days) }} days</strong> at your current pace ({{ '{:,.0f}'.format(pa.reorder.daily_rate) }} KG/day).{% else %}No stock on hand.{% endif %}</p>
+          {% if pa.reorder.suggested_kg > 0 %}
+          <p class="mb-2 small">To hold {{ pa.reorder.target_days }} days of cover, buy about <strong>{{ '{:,.0f}'.format(pa.reorder.suggested_kg) }} KG</strong>{% if pa.reorder.budget %} (≈ {{ pa.reorder.budget|money }}){% endif %}.</p>
+          <button type="button" class="btn btn-sm btn-outline-success" id="planPurchase" data-kg="{{ pa.reorder.suggested_kg|int }}"><i class="bi bi-magic"></i> Use {{ '{:,.0f}'.format(pa.reorder.suggested_kg) }} KG</button>
+          {% else %}<p class="mb-0 small text-success"><i class="bi bi-check-circle"></i> You already hold more than {{ pa.reorder.target_days }} days of stock.</p>{% endif %}
         </div>
       </div>
-      <button class="btn btn-primary"><i class="bi bi-check2-circle me-1"></i> Save purchase</button>
-    </form>
+      {% endif %}
+    </div>
   </div>
+</section>
+
+<!-- ============ LEDGER ============ -->
+<section id="tab-ledger" class="dx-panel" hidden>
+  <div class="card">
+    <div class="card-body">
+      <form class="dx-filters" method="get" action="{{ url_for('purchases') }}">
+        <input type="search" class="form-control form-control-sm" name="q" value="{{ filters.q }}" placeholder="Search ID, supplier, location...">
+        <select class="form-select form-select-sm" name="supplier">
+          <option value="">All suppliers</option>
+          {% for n in supplier_names %}<option value="{{ n }}" {{ 'selected' if n == filters.supplier }}>{{ n }}</option>{% endfor %}
+        </select>
+        <label>From <input type="date" class="form-control form-control-sm" name="pfrom" value="{{ filters.pfrom }}"></label>
+        <label>To <input type="date" class="form-control form-control-sm" name="pto" value="{{ filters.pto }}"></label>
+        <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-funnel"></i> Filter</button>
+        {% if filters.q or filters.supplier or filters.pfrom or filters.pto %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('purchases') }}#ledger">Reset</a>{% endif %}
+        {% if can_export %}<a class="btn btn-sm btn-outline-success ms-auto" href="{{ url_for('purchases_export', q=filters.q, supplier=filters.supplier, pfrom=filters.pfrom, pto=filters.pto) }}"><i class="bi bi-download"></i> Export CSV</a>{% endif %}
+      </form>
+      <div class="dx-summary">
+        <span><strong>{{ ledger_totals.n }}</strong> purchase{{ '' if ledger_totals.n == 1 else 's' }}</span>
+        <span><strong>{{ ledger_totals.spend|money }}</strong> spent</span>
+        <span><strong>{{ '{:,.0f}'.format(ledger_totals.kg) }} KG</strong> received</span>
+        {% if ledger_totals.kg %}<span><strong>{{ (ledger_totals.spend / ledger_totals.kg)|money }}</strong> / KG landed</span>{% endif %}
+      </div>
+      <div class="table-responsive">
+        <table id="purchaseTable" class="table table-hover table-sm align-middle sortable">
+          <thead>
+            <tr>
+              <th style="width:48px;" class="text-center">#</th>
+              <th data-sort>Purchase ID</th>
+              <th data-sort>Date</th>
+              <th data-sort>Agent / Supplier</th>
+              <th data-sort class="text-end">Bought KG</th>
+              <th data-sort class="text-end">Price/KG</th>
+              <th data-sort class="text-end">Total Cost</th>
+              <th data-sort class="text-end">Received KG</th>
+              <th data-sort class="text-end">Landed/KG</th>
+              <th data-sort class="text-center">Status</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            {% set lost = r.quantity_kg - r.quantity_received_kg %}
+            {% set lost_pct = (lost / r.quantity_kg) if r.quantity_kg else 0 %}
+            <tr class="customer-row-accent {{ r.local_agent|customer_theme }}{% if r.deleted %} table-secondary text-muted{% endif %}">
+              <td class="text-center"><span class="table-seq-num">{{ loop.index }}</span></td>
+              <td>
+                <span class="purchase-id-pill"><i class="bi bi-box-seam text-warning me-1"></i>{{ r.purchase_id }}</span>
+                {% if r.deleted %}<span class="status-pill status-pill-reversed ms-1">REVERSED</span>{% endif %}
+              </td>
+              <td>{{ r.purchase_date|short_date }}</td>
+              <td>
+                <div class="customer-chip">
+                  <span class="customer-avatar {{ r.local_agent|customer_theme }}">{{ r.local_agent|customer_initials }}</span>
+                  <span><strong class="text-dark">{{ r.local_agent }}</strong>{% if r.location %}<small class="d-block text-muted">{{ r.location }}</small>{% endif %}</span>
+                </div>
+              </td>
+              <td class="text-end fw-bold">{{ "{:,.2f}".format(r.quantity_kg) }}</td>
+              <td class="text-end">{{ r.price_per_kg|money }}</td>
+              <td class="text-end fw-bold text-dark">{{ r.total_cost|money }}</td>
+              <td class="text-end fw-bold text-success">{{ "{:,.2f}".format(r.quantity_received_kg) }}</td>
+              <td class="text-end">{% if r.quantity_received_kg > 0 %}{{ (r.total_cost / r.quantity_received_kg)|money }}{% else %}—{% endif %}</td>
+              <td class="text-center">
+                {% if r.deleted %}
+                  <span class="status-pill status-pill-reversed">Reversed</span>
+                {% elif lost_pct > 0.02 %}
+                  <span class="status-pill status-pill-pending" title="{{ '{:,.0f}'.format(lost) }} KG short">Short {{ '%.1f%%'|format(lost_pct * 100) }}</span>
+                {% else %}
+                  <span class="status-pill status-pill-paid"><i class="bi bi-check2 me-1"></i>Received</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if session.get('role') == 'ADMIN' %}
+                <div class="btn-group btn-group-sm">
+                  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('edit_purchase', purchase_id=r.id) }}" title="Edit purchase"><i class="bi bi-pencil"></i></a>
+                  <form class="d-inline" method="post" action="{{ url_for('reverse_record_route', table='purchases', record_id=r.id) }}" onsubmit="return confirm('Reverse this purchase?');">
+                    {{ csrf_input() }}
+                    <button class="btn btn-sm btn-outline-warning" title="Reverse purchase"><i class="bi bi-arrow-counterclockwise"></i></button>
+                  </form>
+                  <button type="button" class="btn btn-sm btn-outline-danger" title="Delete transaction" data-bs-toggle="modal" data-bs-target="#deleteTransactionModal" data-delete-url="{{ url_for('delete_record_route', table='purchases', record_id=r.id) }}" data-delete-id="{{ r.purchase_id }}" data-delete-type="Purchase" data-delete-party="{{ r.local_agent }}" data-delete-quantity="{{ '{:,.2f}'.format(r.quantity_received_kg) }} KG" data-delete-amount="{{ r.total_cost|money }}" data-delete-date="{{ r.purchase_date|pretty_date }}"><i class="bi bi-trash3"></i></button>
+                </div>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="11">
+                <div class="empty-state"><i class="bi bi-box-seam"></i>{% if filters.q or filters.supplier or filters.pfrom or filters.pto %}No purchases match these filters.{% else %}No purchases recorded yet.{% endif %}<br><a href="{{ url_for('purchases') }}#new" class="btn btn-sm btn-primary mt-2">{% if filters.q or filters.supplier or filters.pfrom or filters.pto %}Clear filters{% else %}Start with your first purchase{% endif %}</a></div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination d-flex justify-content-between align-items-center mt-2"><small class="text-muted" data-page-info></small><div class="btn-group btn-group-sm"><button class="btn btn-outline-secondary" data-page-prev type="button">Prev</button><button class="btn btn-outline-secondary" data-page-next type="button">Next</button></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ANALYTICS ============ -->
+<section id="tab-analytics" class="dx-panel" hidden>
+<div class="dx">
+  {{ period_header(pa, 'purchases', 'Purchasing analytics', 'What your maize really costs, who supplies it best, and when to buy next.', '#analytics', 'purchases') }}
+
+  {% if not pa.has_data %}
+  <section class="dx-card"><p class="dx-empty"><i class="bi bi-box-seam"></i> No purchases in this period. Record one, or pick a wider period.</p></section>
+  {% endif %}
+
+  <section class="dx-kpis dx-kpis-wide">
+    {{ stat('gold', 'cash-stack', 'Total spend', k.spend|money, k.count ~ (' purchase' if k.count == 1 else ' purchases'), pa.deltas.spend, False) }}
+    {{ stat('green', 'box-seam', 'Maize received', '{:,.0f} KG'.format(k.received), ('of {:,.0f} KG bought'.format(k.bought)), pa.deltas.received) }}
+    {{ stat('blue', 'tag', 'Real cost per KG', (k.landed|money) if k.landed is not none else '—', 'Total outlay ÷ KG received', pa.deltas.landed, False) }}
+    {{ stat('red', 'exclamation-triangle', 'Lost in transit', k.loss_value|money, ('{:,.0f} KG short ({:.1%})'.format(k.loss_kg, k.loss_pct)) if k.loss_pct is not none else 'No purchases yet', pa.deltas.loss_value, False) }}
+    {{ stat('violet', 'truck', 'Transport & other', ((k.transport + k.other)|money), ('%.1f%% of spend'|format(k.overhead_pct * 100)) if k.overhead_pct is not none else '—') }}
+  </section>
+
+  <section class="dx-grid">
+    <div class="dx-card dx-span-8">
+      <div class="dx-card-head"><h3><i class="bi bi-bar-chart-line"></i> Spend &amp; real cost per KG</h3><span class="dx-muted">per {{ pa.series.granularity }} · line = cost per KG</span></div>
+      <div class="dx-chart"><canvas id="puSpend"></canvas></div>
+    </div>
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-stars"></i> Buying insights</h3></div>
+      {{ insights(pa.insights, 'Insights appear as you record purchases.') }}
+    </div>
+  </section>
+
+  <section class="dx-grid">
+    <div class="dx-card dx-span-8">
+      <div class="dx-card-head"><h3><i class="bi bi-trophy"></i> Supplier scorecard</h3><span class="dx-muted">score = 60% price · 40% reliability</span></div>
+      {% if pa.suppliers %}
+      <div class="dx-table-wrap">
+        <table class="dx-table">
+          <thead><tr><th>Supplier</th><th>Grade</th><th class="dx-num">Spend</th><th class="dx-num">Received</th><th class="dx-num">Loss</th><th class="dx-num">Real cost/KG</th><th class="dx-num">vs average</th></tr></thead>
+          <tbody>
+            {% for s in pa.suppliers %}
+            <tr>
+              <td data-label="Supplier"><strong>{{ s.name }}</strong><small>{{ s.purchases }} purchase{{ '' if s.purchases == 1 else 's' }} · {{ '%.0f%%'|format(s.share * 100) }} of spend · last {{ s.last_buy|short_date }}</small></td>
+              <td data-label="Grade"><span class="dx-pill {{ 'dx-pill-good' if s.grade == 'A' else 'dx-pill-warn' if s.grade == 'B' else 'dx-pill-bad' }}" title="Score {{ s.score }}/100">{{ s.grade }} · {{ s.score }}</span></td>
+              <td data-label="Spend" class="dx-num">{{ s.spend|money }}</td>
+              <td data-label="Received" class="dx-num">{{ '{:,.0f}'.format(s.received) }} KG</td>
+              <td data-label="Loss" class="dx-num"><span class="dx-pill {{ 'dx-pill-bad' if s.loss_pct > 0.05 else 'dx-pill-warn' if s.loss_pct > 0.02 else 'dx-pill-good' }}">{{ '%.1f%%'|format(s.loss_pct * 100) }}</span>{% if s.loss_value > 0.005 %}<small>{{ s.loss_value|money }} lost</small>{% endif %}</td>
+              <td data-label="Real cost/KG" class="dx-num">{{ (s.landed|money) if s.landed else '—' }}</td>
+              <td data-label="vs average" class="dx-num">{% if s.vs_market is not none %}<span class="{{ 'dx-neg' if s.vs_market > 0.02 else 'dx-pos' if s.vs_market < -0.02 }}">{{ '%+.1f%%'|format(s.vs_market * 100) }}</span>{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<p class="dx-empty"><i class="bi bi-truck"></i> No suppliers in this period.</p>{% endif %}
+    </div>
+    <div class="dx-card dx-span-4 dx-restock-card">
+      <div class="dx-card-head"><h3><i class="bi bi-cart-plus"></i> Restock assistant</h3></div>
+      {% set ro = pa.reorder %}
+      {% if ro.has_pace %}
+      <div class="dx-outlook dx-outlook-2col">
+        <div><small>Stock cover</small><strong class="{{ 'dx-neg' if ro.urgent }}">{{ ('%.0f days'|format(ro.cover_days)) if ro.cover_days is not none else 'None' }}</strong></div>
+        <div><small>Suggested buy</small><strong>{{ '{:,.0f}'.format(ro.suggested_kg) }} KG</strong></div>
+        <div><small>Est. budget</small><strong>{{ (ro.budget|money) if ro.budget else '—' }}</strong></div>
+        <div><small>Reorder by</small><strong>{{ ro.reorder_by or '—' }}</strong></div>
+      </div>
+      <p class="dx-muted">Based on {{ '{:,.0f}'.format(ro.daily_rate) }} KG sold per day over the last 30 days, aiming for {{ ro.target_days }} days of cover, priced at your recent average real cost.</p>
+      {% if ro.suggested_kg > 0 %}<button type="button" class="dx-btn dx-btn-primary" data-plan="{{ ro.suggested_kg|int }}"><i class="bi bi-magic"></i> Plan this purchase</button>{% endif %}
+      {% else %}<p class="dx-empty"><i class="bi bi-cart"></i> Suggestions appear once you have sales to measure your pace.</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="dx-grid">
+    <div class="dx-card dx-span-6">
+      <div class="dx-card-head"><h3><i class="bi bi-graph-up"></i> Real cost per KG by supplier</h3><span class="dx-muted">top suppliers by spend</span></div>
+      {% if pa.price_trend.datasets %}<div class="dx-chart dx-chart-sm"><canvas id="puTrend"></canvas></div>
+      {% else %}<p class="dx-empty"><i class="bi bi-graph-up"></i> Needs purchases in this period.</p>{% endif %}
+    </div>
+    <div class="dx-card dx-span-3">
+      <div class="dx-card-head"><h3><i class="bi bi-pie-chart"></i> Where money goes</h3></div>
+      {% if k.spend > 0 %}<div class="dx-donut"><canvas id="puBreakdown"></canvas></div>
+      <ul class="dx-legend">
+        <li><i style="background:#16a34a"></i><span>Maize</span><strong>{{ pa.breakdown.goods|money }}</strong></li>
+        <li><i style="background:#2563eb"></i><span>Transport</span><strong>{{ pa.breakdown.transport|money }}</strong></li>
+        <li><i style="background:#f59e0b"></i><span>Other</span><strong>{{ pa.breakdown.other|money }}</strong></li>
+      </ul>
+      {% else %}<p class="dx-empty"><i class="bi bi-pie-chart"></i> No spend yet.</p>{% endif %}
+    </div>
+    <div class="dx-card dx-span-3">
+      <div class="dx-card-head"><h3><i class="bi bi-geo-alt"></i> Sourcing locations</h3></div>
+      {% if pa.locations %}
+      <ul class="dx-bars">
+        {% for l in pa.locations %}
+        <li><div class="dx-bar-row"><span>{{ l.name }}</span><strong>{{ (l.landed|money) if l.landed else '—' }}<small>/KG</small></strong></div>
+          <small>{{ '{:,.0f}'.format(l.received) }} KG · {{ l.purchases }} purchase{{ '' if l.purchases == 1 else 's' }}</small></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="dx-empty"><i class="bi bi-geo-alt"></i> No locations recorded.</p>{% endif %}
+    </div>
+  </section>
+  <p class="dx-foot">Real cost per KG = (maize + transport + other costs) ÷ KG actually received. Reversed and deleted purchases are excluded.</p>
+</div>
+</section>
 </div>
 
-<div class="card">
-  <div class="card-body">
-    <div class="panel-title d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <div class="d-flex align-items-center gap-2">
-        <span class="section-tag section-tag-purchase"><i class="bi bi-box-seam-fill me-1"></i> Inbound Procurement &amp; Intake</span>
-        <h5 class="mb-0">Recent Purchases ({{ rows|length }})</h5>
-      </div>
-      <div class="table-tools mb-0"><input class="form-control form-control-sm" data-table-search="#purchaseTable" placeholder="Search purchases..."></div>
-    </div>
-    <div class="table-responsive">
-      <table id="purchaseTable" class="table table-hover table-sm align-middle">
-        <thead>
-          <tr>
-            <th style="width:48px;" class="text-center">#</th>
-            <th>Purchase ID</th>
-            <th>Date</th>
-            <th>Agent / Supplier</th>
-            <th>Product</th>
-            <th>Location</th>
-            <th class="text-end">Qty (KG)</th>
-            <th class="text-end">Price/KG</th>
-            <th class="text-end">Total Cost</th>
-            <th class="text-end">Received (KG)</th>
-            <th class="text-center">Status</th>
-            <th>Staff</th>
-            <th class="text-end">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in rows %}
-          <tr class="customer-row-accent {{ r.local_agent|customer_theme }}{% if r.deleted %} table-secondary text-muted{% endif %}">
-            <td class="text-center">
-              <span class="table-seq-num">{{ loop.index }}</span>
-            </td>
-            <td>
-              <span class="purchase-id-pill">
-                <i class="bi bi-box-seam text-warning me-1"></i>{{ r.purchase_id }}
-              </span>
-              {% if r.deleted %}<span class="status-pill status-pill-reversed ms-1">REVERSED</span>{% endif %}
-            </td>
-            <td>{{ r.purchase_date|pretty_date }}</td>
-            <td>
-              <div class="customer-chip">
-                <span class="customer-avatar {{ r.local_agent|customer_theme }}">{{ r.local_agent|customer_initials }}</span>
-                <strong class="text-dark">{{ r.local_agent }}</strong>
-              </div>
-            </td>
-            <td>
-              <span class="product-tag-pill product-tag-seeds"><i class="bi bi-patch-check me-1"></i>Yellow Maize</span>
-            </td>
-            <td>{{ r.location or '-' }}</td>
-            <td class="text-end fw-bold">{{ "{:,.2f}".format(r.quantity_kg) }} KG</td>
-            <td class="text-end">{{ r.price_per_kg|money }}</td>
-            <td class="text-end fw-bold text-dark">{{ r.total_cost|money }}</td>
-            <td class="text-end fw-bold text-success">{{ "{:,.2f}".format(r.quantity_received_kg) }} KG</td>
-            <td class="text-center">
-              {% if r.deleted %}
-                <span class="status-pill status-pill-reversed">Reversed</span>
-              {% else %}
-                <span class="status-pill status-pill-paid"><i class="bi bi-check2 me-1"></i>Received</span>
-              {% endif %}
-            </td>
-            <td><small class="badge bg-light text-dark border">{{ r.staff_user }}</small></td>
-            <td class="text-end">
-              {% if session.get('role') == 'ADMIN' %}
-              <div class="btn-group btn-group-sm">
-                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('edit_purchase', purchase_id=r.id) }}" title="Edit purchase"><i class="bi bi-pencil"></i></a>
-                <form class="d-inline" method="post" action="{{ url_for('reverse_record_route', table='purchases', record_id=r.id) }}" onsubmit="return confirm('Reverse this purchase?');">
-                  {{ csrf_input() }}
-                  <button class="btn btn-sm btn-outline-warning" title="Reverse purchase"><i class="bi bi-arrow-counterclockwise"></i></button>
-                </form>
-                <button type="button" class="btn btn-sm btn-outline-danger" title="Delete transaction" data-bs-toggle="modal" data-bs-target="#deleteTransactionModal" data-delete-url="{{ url_for('delete_record_route', table='purchases', record_id=r.id) }}" data-delete-id="{{ r.purchase_id }}" data-delete-type="Purchase" data-delete-party="{{ r.local_agent }}" data-delete-quantity="{{ '{:,.2f}'.format(r.quantity_received_kg) }} KG" data-delete-amount="{{ r.total_cost|money }}" data-delete-date="{{ r.purchase_date|pretty_date }}"><i class="bi bi-trash3"></i></button>
-              </div>
-              {% endif %}
-            </td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="13">
-              <div class="empty-state"><i class="bi bi-box-seam"></i>No purchases recorded yet.<br><a href="{{ url_for('purchases') }}" class="btn btn-sm btn-primary mt-2">Start with your first purchase</a></div>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-</div>
+<script id="puData" type="application/json">{{ {'series': pa.series, 'trend': pa.price_trend, 'breakdown': pa.breakdown, 'memory': form_memory, 'market': pa.market_landed}|tojson }}</script>
 {% endblock %}
+
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/dx.js') }}"></script>
 <script>
-function purchaseNumber(name){return parseFloat(document.querySelector('[name="'+name+'"]')?.value)||0}
-function updatePurchaseTotal(){const total=purchaseNumber('quantity_kg')*purchaseNumber('price_per_kg')+purchaseNumber('transport_cost')+purchaseNumber('other_expenses');document.getElementById('purchaseTotal').textContent='GH₵'+total.toLocaleString('en-GH',{minimumFractionDigits:2,maximumFractionDigits:2})}
-document.querySelectorAll('.smart-form input').forEach(input=>input.addEventListener('input',updatePurchaseTotal));
-updatePurchaseTotal();
+(function () {
+  const data = JSON.parse(document.getElementById('puData').textContent);
+  const $ = (s, r) => (r || document).querySelector(s);
+  const num = name => parseFloat($('[name="' + name + '"]')?.value) || 0;
+  const gh = v => 'GH₵' + Number(v).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  /* ---------- tabs ---------- */
+  const params = new URLSearchParams(location.search);
+  const filtered = ['q', 'supplier', 'pfrom', 'pto'].some(k => params.get(k));
+  const tabsApi = DX.tabs({
+    initial: {{ ('ledger' if blocked_purchase else 'analytics' if analytics_requested else '')|tojson }} || (filtered ? 'ledger' : ''),
+    onFirstShow: { analytics: initCharts },
+  });
+  document.querySelectorAll('[data-plan]').forEach(b => b.addEventListener('click', () => {
+    tabsApi.show('record'); const q = $('[name="quantity_kg"]'); q.value = b.dataset.plan; q.dispatchEvent(new Event('input', { bubbles: true })); q.focus(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  }));
+  const plan = $('#planPurchase');
+  if (plan) plan.addEventListener('click', () => { const q = $('[name="quantity_kg"]'); q.value = plan.dataset.kg; q.dispatchEvent(new Event('input', { bubbles: true })); q.focus(); });
+
+  /* ---------- smart form ---------- */
+  const mem = data.memory, sup = mem.suppliers || {};
+  const hint = $('#supplierHint');
+  function pct(x) { return (x * 100).toFixed(1) + '%'; }
+  function supplierChanged() {
+    const name = $('[name="local_agent"]').value.trim(), s = sup[name];
+    if (!s) { hint.hidden = true; update(); return; }
+    const phone = $('[name="agent_phone"]'), loc = $('[name="location"]');
+    if (!phone.value && s.phone) phone.value = s.phone;
+    if (!loc.value && s.location) loc.value = s.location;
+    hint.hidden = false;
+    hint.innerHTML = '<i class="bi bi-clock-history"></i> ' + s.n + ' past purchase' + (s.n === 1 ? '' : 's') + (s.last_price != null ? ' · last price <strong>' + gh(s.last_price) + '/KG</strong> on ' + s.last_date : '') +
+      (s.typical_loss > 0.005 ? ' · usually <strong>' + pct(s.typical_loss) + '</strong> short on delivery' : '');
+    update();
+  }
+  $('[name="local_agent"]').addEventListener('input', supplierChanged);
+  $('[name="local_agent"]').addEventListener('change', supplierChanged);
+  $('#sameQty')?.addEventListener('click', () => { $('[name="quantity_received_kg"]').value = $('[name="quantity_kg"]').value; update(); });
+
+  function flag(level, icon, text) { return '<li class="dx-flag dx-flag-' + level + '"><i class="bi bi-' + icon + '"></i><span>' + text + '</span></li>'; }
+  function update() {
+    const q = num('quantity_kg'), got = num('quantity_received_kg'), price = num('price_per_kg'), tr = num('transport_cost'), ot = num('other_expenses');
+    const total = q * price + tr + ot;
+    $('#purchaseTotal').textContent = gh(total);
+    const facts = $('#checkFacts'), empty = $('#checkEmpty'), flags = $('#checkFlags'), ref = $('#checkRef');
+    if (!(q > 0 && price > 0)) { facts.hidden = true; empty.hidden = false; flags.innerHTML = ''; ref.hidden = true; return; }
+    empty.hidden = true; facts.hidden = false;
+    const lost = Math.max(q - got, 0), lostPct = lost / q, landed = got > 0 ? total / got : null, over = total > 0 ? (tr + ot) / total : 0;
+    $('#ckTotal').textContent = gh(total);
+    $('#ckLanded').textContent = landed ? gh(landed) : 'enter KG received';
+    $('#ckLoss').textContent = got > 0 ? (lost > 0 ? lost.toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' KG (' + pct(lostPct) + ') ≈ ' + gh(lost * price) : 'None') : '—';
+    $('#ckOverhead').textContent = (tr + ot) > 0 ? gh(tr + ot) + ' (' + pct(over) + ')' : 'None';
+    const out = [], name = $('[name="local_agent"]').value.trim(), s = sup[name];
+    if (got > q) out.push(flag('bad', 'x-octagon', 'Received is more than purchased. Check the quantities.'));
+    if (got > 0 && lost > 0) {
+      const typical = s ? s.typical_loss : 0;
+      out.push(flag(lostPct > Math.max(0.03, typical + 0.015) ? 'warn' : 'info', 'box-seam', lostPct > typical + 0.015 && s && typical > 0 ? 'Shortfall is higher than this supplier usually has (' + pct(typical) + ').' : 'Some maize did not arrive. You paid for it, so it raises your real cost.'));
+    }
+    if (s && s.last_price) {
+      const d = (price - s.last_price) / s.last_price;
+      if (Math.abs(d) >= 0.05) out.push(flag(d > 0 ? 'warn' : 'good', d > 0 ? 'graph-up-arrow' : 'graph-down-arrow', 'Price is ' + pct(Math.abs(d)) + (d > 0 ? ' higher' : ' lower') + ' than ' + name + "'s last price (" + gh(s.last_price) + ').'));
+    }
+    if (mem.market_price) {
+      const d = (price - mem.market_price) / mem.market_price;
+      if (d >= 0.08) out.push(flag('warn', 'cash-coin', 'That is ' + pct(d) + ' above your 90-day average price (' + gh(mem.market_price) + '/KG).'));
+      else if (d <= -0.08) out.push(flag('good', 'stars', 'Good buy: ' + pct(-d) + ' below your 90-day average price.'));
+    }
+    if (over > 0.15) out.push(flag('info', 'truck-front', 'Transport & other costs are ' + pct(over) + ' of this load.'));
+    if (!out.length) out.push(flag('good', 'check-circle', 'Looks normal compared with your history.'));
+    flags.innerHTML = out.join('');
+    if (data.market && landed) { ref.hidden = false; const d = (landed - data.market) / data.market; ref.innerHTML = 'Real cost vs recent average (' + gh(data.market) + '/KG): <strong class="' + (d > 0.02 ? 'dx-up' : d < -0.02 ? 'dx-down' : '') + '">' + (d >= 0 ? '+' : '') + (d * 100).toFixed(1) + '%</strong>'; }
+    else ref.hidden = true;
+  }
+  document.querySelectorAll('#purchaseForm input').forEach(i => i.addEventListener('input', update));
+  update();
+
+  /* ---------- analytics charts (created on first view so sizes are right) ---------- */
+  function initCharts() {
+    const { make, scales, money, num, palette, dark } = DX;
+    const s = data.series;
+    make('puSpend', { type: 'bar', data: { labels: s.labels, datasets: [
+        { label: 'Spend', data: s.spend, backgroundColor: 'rgba(217,119,6,0.75)', borderRadius: 4, order: 2 },
+        { label: 'Real cost per KG', data: s.landed, type: 'line', yAxisID: 'y2', borderColor: '#2563eb', tension: 0.3, borderWidth: 2.5, pointRadius: 3, spanGaps: true, order: 1 }] },
+      options: { scales: scales({ y2: { position: 'right', beginAtZero: false, grid: { display: false }, ticks: { color: DX.ink(), callback: v => Number(v).toFixed(2) } } }),
+        plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + (c.dataset.yAxisID === 'y2' ? money(c.parsed.y) + '/KG' : money(c.parsed.y)) } } } } });
+    const t = data.trend;
+    if (t.datasets.length) make('puTrend', { type: 'line', data: { labels: t.labels, datasets: t.datasets.map((d, i) => ({ label: d.name, data: d.data, borderColor: palette[i % 4], tension: 0.25, borderWidth: 2.5, pointRadius: 4, spanGaps: true })) },
+      options: { scales: scales({ y: { beginAtZero: false, grid: { color: DX.grid() }, ticks: { color: DX.ink(), callback: v => Number(v).toFixed(2) } } }), plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + money(c.parsed.y) + '/KG' } } } } });
+    const b = data.breakdown;
+    make('puBreakdown', { type: 'doughnut', data: { labels: ['Maize', 'Transport', 'Other'], datasets: [{ data: [b.goods, b.transport, b.other], backgroundColor: ['#16a34a', '#2563eb', '#f59e0b'], borderWidth: 2, borderColor: dark() ? '#182820' : '#fff' }] },
+      options: { cutout: '66%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.label + ': ' + money(c.parsed) } } } } });
+  }
+})();
 </script>
 {% endblock %}

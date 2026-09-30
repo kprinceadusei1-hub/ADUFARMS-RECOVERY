@@ -1,641 +1,305 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - ADUFARMS Maize Management System{% endblock %}
+{% block title %}Dashboard - ADUFARMS{% endblock %}
 {% block content %}
+{% from "_dx.html" import chip, stat %}
+{% macro kpi(tone, icon, label, value, delta, note, spark=None, good_up=True) -%}
+{{ stat(tone, icon, label, value, note, delta, good_up, spark) }}
+{%- endmacro %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='dx-1') }}">
 
-<!-- Executive Welcome Hero Banner -->
-<section class="welcome-hero-banner" aria-labelledby="welcome-banner-title" data-hero-image="{{ url_for('static', filename=dashboard_images.hero) }}">
-  <div class="welcome-hero-inner">
-    <div class="welcome-hero-copy">
-      <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-        <span class="badge bg-warning text-dark px-2 py-1 fw-bold"><i class="bi bi-shield-check me-1"></i>VERIFIED AGRIBUSINESS ERP</span>
-        <span class="badge bg-light text-dark px-3 py-1 fw-bold"><i class="bi bi-calendar3 me-1"></i><span id="dashboardDate">Current Position</span></span>
-      </div>
-      <h2 id="welcome-banner-title">Welcome back,<br>{{ session.get('full_name') or 'Prince Adusei' }}</h2>
-      <p>Manage your customers, sales, inventory and grow your maize business across Ghanaian wholesale supply chains.</p>
-      <div class="welcome-pills">
-        <span class="welcome-pill"><i class="bi bi-patch-check-fill text-warning"></i> Quality Maize</span>
-        <span class="welcome-pill"><i class="bi bi-truck text-warning"></i> Reliable Supply</span>
-        <span class="welcome-pill"><i class="bi bi-graph-up-arrow text-warning"></i> Sustainable Growth</span>
-      </div>
-    </div>
-    <div class="d-none d-lg-block">
-      <div class="welcome-accent-box">
-        <div class="d-flex align-items-center gap-2 mb-2">
-          <i class="bi bi-trophy-fill text-warning fs-5"></i>
-          <h5 class="mb-0">Good Management Brings Greater Harvests</h5>
-        </div>
-        <p>"From Farm to Customer with Confidence."</p>
-        <div class="d-flex gap-2 mt-3">
-          <a class="btn btn-warning btn-sm fw-bold px-3" href="{{ url_for('customers') }}#new">
-            <i class="bi bi-person-plus-fill me-1"></i> + Add Customer
-          </a>
-          <a class="btn btn-light btn-sm fw-bold px-3" href="{{ url_for('sales') }}#new">
-            <i class="bi bi-cart-plus-fill me-1"></i> + Record Sale
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
 
-<!-- 4 Circular-Icon KPI Cards Matching Executive Design -->
-<section class="dashboard-kpi-row" aria-label="Key Performance Indicators">
-  <!-- 1. Total Customers -->
-  <article class="kpi-card-exec">
-    <div class="kpi-circle-icon icon-green">
-      <i class="bi bi-people-fill"></i>
+
+<div class="dx">
+  <!-- Header -->
+  <section class="dx-header" data-hero-image="{{ url_for('static', filename=dashboard_images.hero) }}">
+    <div class="dx-header-copy">
+      <span class="dx-eyebrow"><i class="bi bi-calendar3"></i> {{ d.period_text }}{% if d.compare_text %} <em>· {{ d.compare_text }}</em>{% endif %}</span>
+      <h2><span id="dxGreeting">Welcome back</span>, {{ session.get('full_name') or session.get('username') or '' }}</h2>
+      <p>Here is how ADUFARMS is performing{% if d.range_key != 'all' %} over the {{ d.period_label|lower }}{% endif %}.</p>
     </div>
-    <div class="kpi-exec-body">
-      <div class="kpi-exec-title">Total Customers</div>
-      <div class="kpi-exec-val">{{ stats.customers }}</div>
-      <div class="kpi-exec-trend text-success">
-        <i class="bi bi-arrow-up-short fs-6"></i> 12% <span class="text-muted fw-normal ms-1">from last month</span>
+    <div class="dx-header-actions">
+      <div class="dx-range" role="tablist" aria-label="Reporting period">
+        {% for key, label in d.ranges %}
+        <a href="{{ url_for('dashboard', range=key) }}" class="{{ 'active' if key == d.range_key }}" role="tab" aria-selected="{{ 'true' if key == d.range_key else 'false' }}">{{ label }}</a>
+        {% endfor %}
+      </div>
+      <div class="dx-quick">
+        {% if can.create_sales %}<a class="dx-btn dx-btn-primary" href="{{ url_for('sales') }}#new"><i class="bi bi-plus-lg"></i> New sale</a>{% endif %}
+        {% if can.record_payment %}<a class="dx-btn" href="{{ url_for('payments') }}"><i class="bi bi-wallet2"></i> Record payment</a>{% endif %}
+        {% if can.create_purchases %}<a class="dx-btn" href="{{ url_for('purchases') }}"><i class="bi bi-box-seam"></i> New purchase</a>{% endif %}
+        {% if can.create_customers %}<a class="dx-btn" href="{{ url_for('customers') }}#new"><i class="bi bi-person-plus"></i> Add customer</a>{% endif %}
       </div>
     </div>
-  </article>
+  </section>
 
-  <!-- 2. Total Sales -->
-  <article class="kpi-card-exec">
-    <div class="kpi-circle-icon icon-orange">
-      <i class="bi bi-cart-fill"></i>
-    </div>
-    <div class="kpi-exec-body">
-      <div class="kpi-exec-title">Total Sales</div>
-      <div class="kpi-exec-val">{{ stats.transactions }}</div>
-      <div class="kpi-exec-trend text-success">
-        <i class="bi bi-arrow-up-short fs-6"></i> 18% <span class="text-muted fw-normal ms-1">from last month</span>
+  {% if d.is_empty %}
+  <!-- Fresh-start onboarding -->
+  <section class="dx-card dx-onboard">
+    <div class="dx-card-head"><h3><i class="bi bi-rocket-takeoff"></i> Get started</h3><span class="dx-muted">Your workspace is empty. Follow these steps and this dashboard fills itself in.</span></div>
+    <ol class="dx-steps">
+      <li class="{{ 'done' if d.counts.customers }}"><span class="dx-step-dot">{% if d.counts.customers %}<i class="bi bi-check-lg"></i>{% else %}1{% endif %}</span>
+        <div><strong>Add your first customer</strong><small>Buyers, farms and traders you sell to.</small></div>
+        {% if can.create_customers %}<a class="dx-btn" href="{{ url_for('customers') }}#new">Add customer</a>{% endif %}</li>
+      <li class="{{ 'done' if d.counts.purchases }}"><span class="dx-step-dot">{% if d.counts.purchases %}<i class="bi bi-check-lg"></i>{% else %}2{% endif %}</span>
+        <div><strong>Record a purchase</strong><small>Maize bought from suppliers adds to your stock.</small></div>
+        {% if can.create_purchases %}<a class="dx-btn" href="{{ url_for('purchases') }}">Record purchase</a>{% endif %}</li>
+      <li class="{{ 'done' if d.counts.sales }}"><span class="dx-step-dot">{% if d.counts.sales %}<i class="bi bi-check-lg"></i>{% else %}3{% endif %}</span>
+        <div><strong>Make a sale</strong><small>Sales are checked against available stock.</small></div>
+        {% if can.create_sales %}<a class="dx-btn" href="{{ url_for('sales') }}#new">Record sale</a>{% endif %}</li>
+      <li class="{{ 'done' if d.counts.payments }}"><span class="dx-step-dot">{% if d.counts.payments %}<i class="bi bi-check-lg"></i>{% else %}4{% endif %}</span>
+        <div><strong>Record a payment</strong><small>Track what customers have paid and still owe.</small></div>
+        {% if can.record_payment %}<a class="dx-btn" href="{{ url_for('payments') }}">Record payment</a>{% endif %}</li>
+    </ol>
+  </section>
+  {% endif %}
+
+  <!-- KPIs -->
+  <section class="dx-kpis" aria-label="Key figures">
+    {% if can.sales %}{{ kpi('green', 'graph-up-arrow', 'Revenue', d.totals.revenue|money, d.deltas.revenue, d.totals.count ~ (' sale' if d.totals.count == 1 else ' sales'), d.series.revenue) }}{% endif %}
+    {% if can.reports %}{{ kpi('gold', 'piggy-bank', 'Gross profit', d.profit|money, d.deltas.profit, (('%.0f%% margin'|format(d.margin * 100)) if d.margin is not none else 'No sales yet'), None) }}{% endif %}
+    {% if can.payments %}{{ kpi('blue', 'wallet2', 'Collected', d.totals.collected|money, d.deltas.collected, ('%.0f%% of billed sales settled'|format(d.receivables.collection_rate * 100)) if d.receivables.collection_rate is not none else 'Payments received', d.series.collected) }}{% endif %}
+    {% if can.payments %}{{ kpi('red', 'hourglass-split', 'Receivables', d.receivables.total|money, None, (d.receivables.debtors|length ~ ' customer' ~ ('' if d.receivables.debtors|length == 1 else 's') ~ ' owe money') if d.receivables.debtors else 'Nobody owes you', None) }}{% endif %}
+    {% if can.inventory %}{{ kpi('teal', 'box-seam', 'Stock on hand', '{:,.0f} KG'.format(d.stock.available_kg), None, ('~%.0f days of cover'|format(d.days_cover)) if d.days_cover is not none else ('Worth ' ~ (d.stock.value|money) if d.stock.available_kg > 0 else 'Nothing in stock'), None) }}{% endif %}
+    {% if can.sales %}{{ kpi('violet', 'receipt', 'Avg. sale value', (d.avg_sale|money) if d.avg_sale is not none else '—', None, (('%s / KG average price'|format(d.avg_price|money)) if d.avg_price is not none else 'No sales in this period'), None) }}{% endif %}
+  </section>
+
+  <!-- Trend + insights -->
+  <section class="dx-grid">
+    {% if can.sales or can.payments %}
+    <div class="dx-card dx-span-8">
+      <div class="dx-card-head">
+        <h3><i class="bi bi-activity"></i> Sales, collections &amp; purchases</h3>
+        <span class="dx-muted">per {{ d.series.granularity }}</span>
       </div>
+      <div class="dx-chart"><canvas id="dxTrend" aria-label="Trend of sales, collections and purchases"></canvas></div>
     </div>
-  </article>
-
-  <!-- 3. Total Revenue -->
-  <article class="kpi-card-exec">
-    <div class="kpi-circle-icon icon-gold">
-      <i class="bi bi-coin"></i>
-    </div>
-    <div class="kpi-exec-body">
-      <div class="kpi-exec-title">Total Revenue</div>
-      <div class="kpi-exec-val">{{ stats.sales|money }}</div>
-      <div class="kpi-exec-trend text-success">
-        <i class="bi bi-arrow-up-short fs-6"></i> 22% <span class="text-muted fw-normal ms-1">from last month</span>
-      </div>
-    </div>
-  </article>
-
-  <!-- 4. Pending Payments -->
-  <article class="kpi-card-exec">
-    <div class="kpi-circle-icon icon-purple">
-      <i class="bi bi-file-earmark-text-fill"></i>
-    </div>
-    <div class="kpi-exec-body">
-      <div class="kpi-exec-title">Pending Payments</div>
-      <div class="kpi-exec-val">{{ stats.outstanding|money }}</div>
-      <div class="kpi-exec-trend text-danger">
-        <i class="bi bi-hourglass-split"></i> {{ stats.unpaid + stats.part }} pending <span class="text-muted fw-normal ms-1">accounts</span>
-      </div>
-    </div>
-  </article>
-</section>
-
-<!-- Middle Analytics & Quick Actions Row -->
-<div class="row g-3 mb-4 dashboard-analytics-row">
-  <!-- Sales Overview Chart -->
-  <div class="col-lg-5">
-    <div class="card h-100">
-      <div class="card-body">
-        <div class="panel-title d-flex justify-content-between align-items-center mb-3">
-          <div class="d-flex align-items-center gap-2">
-            <i class="bi bi-graph-up text-success fs-5"></i>
-            <h5 class="mb-0">Sales Overview</h5>
+    {% endif %}
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-stars"></i> Smart insights</h3><span class="dx-muted">from your live data</span></div>
+      <ul class="dx-insights">
+        {% for i in d.insights %}
+        <li class="dx-insight dx-insight-{{ i.level }}">
+          <span class="dx-insight-icon"><i class="bi bi-{{ i.icon }}"></i></span>
+          <div>
+            <strong>{% if i.href %}<a href="{{ url_for(i.href) }}">{{ i.title }}</a>{% else %}{{ i.title }}{% endif %}</strong>
+            <small>{{ i.text }}</small>
           </div>
-          <span class="badge bg-light text-dark border px-2 py-1">This Month</span>
-        </div>
-        <div class="chart-box" style="height:240px;">
-          <canvas id="overviewChart"></canvas>
-        </div>
+        </li>
+        {% else %}
+        <li class="dx-empty"><i class="bi bi-lightbulb"></i> Insights appear here as soon as you record purchases, sales and payments.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+
+  <!-- Ageing / customers / payment mix -->
+  <section class="dx-grid">
+    {% if can.payments %}
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-clock-history"></i> Receivables ageing</h3><span class="dx-muted">{{ d.receivables.total|money }}</span></div>
+      {% set colors = {'0-7 days':'#16a34a','8-30 days':'#84cc16','31-60 days':'#f59e0b','Over 60 days':'#dc2626','Opening balances':'#64748b'} %}
+      {% if d.receivables.total > 0.005 %}
+      <div class="dx-stack" role="img" aria-label="Receivables by age">
+        {% for label, amount in d.receivables.buckets.items() if amount > 0.005 %}<span style="flex:{{ amount }};background:{{ colors[label] }}" title="{{ label }}: {{ amount|money }}"></span>{% endfor %}
+      </div>
+      <ul class="dx-legend">
+        {% for label, amount in d.receivables.buckets.items() %}
+        <li><i style="background:{{ colors[label] }}"></i><span>{{ label }}</span><strong>{{ amount|money }}</strong></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="dx-empty"><i class="bi bi-check-circle"></i> All sales are fully paid.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if can.sales %}
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-trophy"></i> Top customers</h3><span class="dx-muted">{{ d.period_label|lower }}</span></div>
+      {% if d.top_customers %}
+      <ol class="dx-bars">
+        {% for c in d.top_customers %}
+        <li>
+          <div class="dx-bar-row"><a href="{{ url_for('customer_statement', customer_id=c.id) }}">{{ c.name }}</a><strong>{{ c.revenue|money }}</strong></div>
+          <div class="dx-bar"><span style="width:{{ (c.share * 100)|round(1) }}%"></span></div>
+          <small>{{ (c.share * 100)|round(0)|int }}% of revenue · {{ c.count }} sale{{ '' if c.count == 1 else 's' }} · {{ '{:,.0f}'.format(c.kg) }} KG</small>
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}<p class="dx-empty"><i class="bi bi-people"></i> No sales in this period.</p>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if can.payments %}
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-pie-chart"></i> How customers pay</h3><span class="dx-muted">{{ d.period_label|lower }}</span></div>
+      {% if d.methods %}
+      <div class="dx-donut"><canvas id="dxMethods" aria-label="Payments by method"></canvas></div>
+      <ul class="dx-legend" id="dxMethodsLegend">
+        {% for m in d.methods %}<li><i data-i="{{ loop.index0 }}"></i><span>{{ m.method|title }}</span><strong>{{ m.amount|money }}</strong></li>{% endfor %}
+      </ul>
+      {% else %}<p class="dx-empty"><i class="bi bi-wallet2"></i> No payments in this period.</p>{% endif %}
+    </div>
+    {% endif %}
+  </section>
+
+  <!-- Tables + stock + activity -->
+  <section class="dx-grid">
+    {% if can.sales %}
+    <div class="dx-card dx-span-7">
+      <div class="dx-card-head"><h3><i class="bi bi-cart3"></i> Recent sales</h3><a class="dx-link" href="{{ url_for('sales') }}">View all</a></div>
+      <div class="dx-table-wrap">
+        <table class="dx-table">
+          <thead><tr><th>Sale</th><th>Customer</th><th class="dx-num">Amount</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for r in d.recent_sales %}
+            {% set balance = r.total_sale - r.paid %}
+            <tr>
+              <td data-label="Sale"><a class="dx-id" href="{{ url_for('transaction_history', transaction_id=r.sales_id) }}">{{ r.sales_id }}</a></td>
+              <td data-label="Customer"><strong>{{ r.name }}</strong><small>{{ '{:,.0f}'.format(r.quantity_kg) }} KG · {{ r.sale_date|short_date }}</small></td>
+              <td data-label="Amount" class="dx-num">{{ r.total_sale|money }}</td>
+              <td data-label="Status">
+                {% if balance <= 0.005 %}<span class="dx-pill dx-pill-good">Paid</span>
+                {% elif r.paid > 0 %}<span class="dx-pill dx-pill-warn">Part paid</span>
+                {% else %}<span class="dx-pill dx-pill-bad">Unpaid</span>{% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="dx-empty">No sales recorded yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
     </div>
-  </div>
+    {% endif %}
 
-  <!-- Sales by Product Donut Chart -->
-  <div class="col-lg-3">
-    <div class="card h-100">
-      <div class="card-body">
-        <div class="panel-title d-flex justify-content-between align-items-center mb-3">
-          <div class="d-flex align-items-center gap-2">
-            <i class="bi bi-pie-chart text-primary fs-5"></i>
-            <h5 class="mb-0">Sales by Product</h5>
-          </div>
-          <span class="badge bg-light text-dark border px-2 py-1">Distribution</span>
+    <div class="dx-col dx-span-5">
+      {% if can.inventory %}
+      <div class="dx-card">
+        <div class="dx-card-head"><h3><i class="bi bi-boxes"></i> Stock position</h3><a class="dx-link" href="{{ url_for('stock') }}">Details</a></div>
+        <div class="dx-stock">
+          <div class="dx-stock-figure">{{ '{:,.0f}'.format(d.stock.available_kg) }}<small> KG</small></div>
+          <span class="dx-pill {{ 'dx-pill-bad' if d.stock.available_kg <= 0 else 'dx-pill-warn' if d.stock.low else 'dx-pill-good' }}">
+            {{ 'Depleted' if d.stock.available_kg <= 0 else 'Low stock' if d.stock.low else 'Healthy' }}</span>
         </div>
-        <div style="height:170px; position:relative;" class="d-flex align-items-center justify-content-center">
-          <canvas id="productChart"></canvas>
-        </div>
-        <div class="mt-3 small">
-          <div class="d-flex justify-content-between py-1 border-bottom">
-            <span><i class="bi bi-circle-fill text-success me-1 small"></i> Maize Supply</span>
-            <strong>68%</strong>
-          </div>
-          <div class="d-flex justify-content-between py-1 border-bottom">
-            <span><i class="bi bi-circle-fill text-warning me-1 small"></i> Maize Seeds</span>
-            <strong>12%</strong>
-          </div>
-          <div class="d-flex justify-content-between py-1 border-bottom">
-            <span><i class="bi bi-circle-fill text-primary me-1 small"></i> Animal Feed</span>
-            <strong>8%</strong>
-          </div>
-          <div class="d-flex justify-content-between py-1">
-            <span><i class="bi bi-circle-fill text-secondary me-1 small"></i> Other Products</span>
-            <strong>12%</strong>
-          </div>
-        </div>
+        <div class="dx-meter" role="img" aria-label="Days of stock cover"><span style="width:{{ d.stock.cover_pct|round(0)|int }}%" class="{{ 'bad' if d.stock.available_kg <= 0 or d.stock.low else 'ok' }}"></span></div>
+        <dl class="dx-facts">
+          <div><dt>Days of cover</dt><dd>{{ ('~%.0f days'|format(d.days_cover)) if d.days_cover is not none else '—' }}</dd></div>
+          <div><dt>Selling pace</dt><dd>{{ '{:,.0f}'.format(d.stock.daily_rate) }} KG / day</dd></div>
+          <div><dt>Avg. cost</dt><dd>{{ d.stock.unit_cost|money }} / KG</dd></div>
+          <div><dt>Stock value</dt><dd>{{ d.stock.value|money }}</dd></div>
+        </dl>
       </div>
-    </div>
-  </div>
-
-  <!-- Quick Actions & Recent Activity -->
-  <div class="col-lg-4">
-    <div class="card h-100">
-      <div class="card-body">
-        <div class="panel-title d-flex align-items-center gap-2 mb-3">
-          <i class="bi bi-lightning-charge-fill text-warning fs-5"></i>
-          <h5 class="mb-0">Quick Actions</h5>
-        </div>
-
-        <!-- 4 Button 2x2 Grid -->
-        <div class="quick-actions-panel mb-3">
-          <a href="{{ url_for('sales') }}#new" class="btn-qa btn-qa-sale">
-            <i class="bi bi-plus-lg fs-5"></i>
-            <span>Record Sale</span>
-          </a>
-          <a href="{{ url_for('customers') }}#new" class="btn-qa btn-qa-customer">
-            <i class="bi bi-person-plus fs-5"></i>
-            <span>Add Customer</span>
-          </a>
-          <a href="{{ url_for('invoice') }}" class="btn-qa btn-qa-invoice">
-            <i class="bi bi-receipt fs-5"></i>
-            <span>Create Invoice</span>
-          </a>
-          <a href="{{ url_for('stock') }}" class="btn-qa btn-qa-product">
-            <i class="bi bi-boxes fs-5"></i>
-            <span>Stock Inventory</span>
-          </a>
-        </div>
-
-        <div class="panel-title d-flex justify-content-between align-items-center pt-2 border-top mb-2">
-          <small class="text-uppercase fw-bold text-muted" style="font-size:0.74rem;">Recent Live Activity</small>
-          <a href="{{ url_for('reports') }}" class="small text-decoration-none">View All</a>
-        </div>
-        <ul class="activity-timeline">
-          <li class="activity-item">
-            <div class="activity-dot activity-dot-green"></div>
-            <div class="small">
-              <strong>Sale recorded:</strong> Maize Supply Dispatch<br>
-              <span class="text-muted">Live ledger updated</span>
-            </div>
-          </li>
-          <li class="activity-item">
-            <div class="activity-dot activity-dot-blue"></div>
-            <div class="small">
-              <strong>Payment received:</strong> GHS settlement<br>
-              <span class="text-muted">Mobile Money &amp; Cash</span>
-            </div>
-          </li>
-          <li class="activity-item">
-            <div class="activity-dot activity-dot-amber"></div>
-            <div class="small">
-              <strong>Customer ledger:</strong> Balance verified<br>
-              <span class="text-muted">Credit status cleared</span>
-            </div>
-          </li>
+      {% endif %}
+      <div class="dx-card">
+        <div class="dx-card-head"><h3><i class="bi bi-lightning-charge"></i> Latest activity</h3></div>
+        <ul class="dx-feed">
+          {% for a in d.activity %}
+          <li><span class="dx-dot dx-dot-{{ a.kind }}"></span>
+            <div><strong>{{ a.title }}</strong><small>{{ a.detail }} · {{ a.when|short_date }}</small></div></li>
+          {% else %}<li class="dx-empty">Nothing recorded yet.</li>{% endfor %}
         </ul>
       </div>
     </div>
-  </div>
+  </section>
+
+  {% if can.payments %}
+  <section class="dx-grid">
+    <div class="dx-card dx-span-12">
+      <div class="dx-card-head"><h3><i class="bi bi-cash-stack"></i> Who owes you</h3>
+        <span class="dx-muted">Total <strong class="dx-neg">{{ d.receivables.total|money }}</strong></span></div>
+      <div class="dx-table-wrap">
+        <table class="dx-table">
+          <thead><tr><th>Customer</th><th>Phone</th><th class="dx-num">Owes</th><th>Oldest unpaid</th><th></th></tr></thead>
+          <tbody>
+            {% for c in d.debtors %}
+            <tr>
+              <td data-label="Customer"><strong>{{ c.name }}</strong></td>
+              <td data-label="Phone">{{ c.phone or '—' }}</td>
+              <td data-label="Owes" class="dx-num dx-neg">{{ c.owed|money }}</td>
+              <td data-label="Oldest unpaid">
+                {% if c.invoices %}<span class="dx-pill {{ 'dx-pill-bad' if c.oldest > 60 else 'dx-pill-warn' if c.oldest > 30 else 'dx-pill-good' }}">{{ c.oldest }} days</span>{% else %}<span class="dx-muted">Opening balance</span>{% endif %}
+              </td>
+              <td class="dx-num"><a class="dx-btn dx-btn-sm" href="{{ url_for('customer_statement', customer_id=c.id) }}">Statement</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="dx-empty"><i class="bi bi-check-circle"></i> No customer owes the business anything.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  <p class="dx-foot">Updated {{ d.generated_at }} · figures are calculated live from your records. <a href="{{ url_for('dashboard', range=d.range_key) }}">Refresh</a></p>
 </div>
 
-<!-- Side-by-Side: Recent Sales (Left) & Recent Customers / Low Stock (Right) -->
-<div class="row g-3 mb-4">
-  <!-- Recent Sales Table (Col-xl-7) -->
-  <div class="col-xl-7">
-    <div class="card h-100">
-      <div class="card-body">
-        <div class="panel-title d-flex justify-content-between align-items-center mb-3">
-          <div class="d-flex align-items-center gap-2">
-            <span class="section-tag section-tag-sales"><i class="bi bi-cart-fill me-1"></i> Sales</span>
-            <h5 class="mb-0">Recent Sales</h5>
-          </div>
-          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('sales') }}">View All</a>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-hover align-middle table-sm">
-            <thead>
-              <tr>
-                <th style="width:40px;" class="text-center">#</th>
-                <th>Sales ID</th>
-                <th>Customer Name</th>
-                <th>Product</th>
-                <th class="text-end">Quantity</th>
-                <th class="text-end">Amount (GHS)</th>
-                <th class="text-center">Status</th>
-                <th>Date</th>
-                <th class="text-end">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for r in recent %}
-              {% set balance = r.total_sale - r.paid %}
-              <tr class="customer-row-accent {{ r.name|customer_theme }}">
-                <td class="text-center">
-                  <span class="table-seq-num">{{ loop.index }}</span>
-                </td>
-                <td>
-                  <a href="{{url_for('transaction_history',transaction_id=r.sales_id)}}" class="sales-id-pill">
-                    {{r.sales_id}}
-                  </a>
-                </td>
-                <td>
-                  <strong class="text-dark">{{r.name}}</strong>
-                </td>
-                <td>
-                  <span class="product-tag-pill"><i class="bi bi-tag-fill me-1"></i>Maize Supply</span>
-                </td>
-                <td class="text-end fw-bold">{{'{:,.2f}'.format(r.quantity_kg)}} KG</td>
-                <td class="text-end fw-bold">{{r.total_sale|money}}</td>
-                <td class="text-center">
-                  {% if balance <= 0.005 %}
-                    <span class="status-pill status-pill-paid"><i class="bi bi-check2 me-1"></i>Paid</span>
-                  {% elif r.paid > 0 %}
-                    <span class="status-pill status-pill-pending"><i class="bi bi-clock me-1"></i>Pending</span>
-                  {% else %}
-                    <span class="status-pill status-pill-unpaid">Unpaid</span>
-                  {% endif %}
-                </td>
-                <td><small class="text-muted">{{r.sale_date|pretty_date}}</small></td>
-                <td class="text-end">
-                  <a class="btn btn-sm btn-outline-primary py-0 px-2" href="{{url_for('invoice',transaction_id=r.sales_id)}}" title="View invoice">
-                    <i class="bi bi-receipt"></i>
-                  </a>
-                </td>
-              </tr>
-              {% else %}
-              <tr>
-                <td colspan="9" class="text-center text-muted py-3">No sales recorded yet.</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Recent Customers & Low Stock (Col-xl-5) -->
-  <div class="col-xl-5">
-    <div class="d-flex flex-column gap-3 h-100">
-      <!-- Recent Customers -->
-      <div class="card flex-grow-1">
-        <div class="card-body">
-          <div class="panel-title d-flex justify-content-between align-items-center mb-3">
-            <div class="d-flex align-items-center gap-2">
-              <span class="section-tag section-tag-customer"><i class="bi bi-people-fill me-1"></i> Customers</span>
-              <h5 class="mb-0">Recent Customers</h5>
-            </div>
-            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('customers') }}">View All</a>
-          </div>
-          <div class="table-responsive">
-            <table class="table table-hover align-middle table-sm">
-              <thead>
-                <tr>
-                  <th style="width:36px;" class="text-center">#</th>
-                  <th>Customer</th>
-                  <th>Phone &amp; Location</th>
-                  <th>Type</th>
-                  <th class="text-end">Total Purchases</th>
-                  <th class="text-center">Status</th>
-                  <th class="text-end">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for r in (recent_customers or outstanding_customers)[:5] %}
-                <tr class="customer-row-accent {{ r.name|customer_theme }}">
-                  <td class="text-center">
-                    <span class="table-seq-num">{{ loop.index }}</span>
-                  </td>
-                  <td>
-                    <div class="customer-chip">
-                      <span class="customer-avatar {{ r.name|customer_theme }}">
-                        {{ r.name|customer_initials }}
-                      </span>
-                      <strong class="text-dark">{{ r.name }}</strong>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="small">{{ r.phone or '-' }}</div>
-                    {% if r.location %}<small class="text-muted d-block">{{ r.location }}</small>{% endif %}
-                  </td>
-                  <td>
-                    {% if r.customer_type %}
-                      {{ r.customer_type|customer_type_badge }}
-                    {% else %}
-                      <span class="badge-customer-type badge-type-retail">Retail</span>
-                    {% endif %}
-                  </td>
-                  <td class="text-end fw-bold text-dark">
-                    {{ (r.total_purchases or r.total_sales or 0)|money }}
-                  </td>
-                  <td class="text-center">
-                    <span class="status-pill status-pill-active"><i class="bi bi-check2 me-1"></i>Active</span>
-                  </td>
-                  <td class="text-end">
-                    <div class="btn-group btn-group-sm">
-                      <a class="btn btn-sm btn-outline-primary py-0 px-2" href="{{ url_for('customer_statement', customer_id=r.id) }}" title="Statement">
-                        <i class="bi bi-eye"></i>
-                      </a>
-                      {% if session.get('role') == 'ADMIN' %}
-                      <a class="btn btn-sm btn-outline-secondary py-0 px-2" href="{{ url_for('edit_customer', customer_id=r.id) }}" title="Edit">
-                        <i class="bi bi-pencil"></i>
-                      </a>
-                      {% endif %}
-                    </div>
-                  </td>
-                </tr>
-                {% else %}
-                <tr>
-                  <td colspan="7" class="text-center text-muted py-3">No customers found.</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- Inventory Spotlight -->
-      <div class="card">
-        <div class="card-body p-0">
-          <div class="position-relative overflow-hidden rounded-top inventory-spotlight" data-inventory-image="{{ url_for('static', filename=dashboard_images.inventory) }}" style="height: 180px;">
-            <div class="position-absolute top-0 start-0 w-100 h-100" style="background: linear-gradient(180deg, rgba(11,19,18,0.10), rgba(11,19,18,0.55));"></div>
-            <div class="position-absolute bottom-0 start-0 p-3 text-white">
-              <div class="small text-uppercase fw-bold opacity-75">Live Inventory</div>
-              <div class="h5 mb-0">Stock performance</div>
-            </div>
-          </div>
-          <div class="p-3">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <strong>Available stock</strong>
-              <span class="badge bg-success-subtle text-success-emphasis">{{ '{:,.2f}'.format(stats.stock) }} KG</span>
-            </div>
-            <p class="small text-muted mb-0">Warehouse stock levels update from the latest stock movement and sales activity.</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Low Stock Products -->
-      <div class="card">
-        <div class="card-body">
-          <div class="panel-title d-flex justify-content-between align-items-center mb-2">
-            <div class="d-flex align-items-center gap-2">
-              <i class="bi bi-box-seam text-danger fs-5"></i>
-              <h5 class="mb-0">Low Stock Products</h5>
-            </div>
-            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('stock') }}">View All</a>
-          </div>
-          <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th class="text-end">Current Stock</th>
-                  <th class="text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td><strong>Yellow Maize (Grade-A)</strong></td>
-                  <td class="text-end fw-bold">{{ '{:,.2f}'.format(stats.stock) }} KG</td>
-                  <td class="text-center">
-                    {% if stats.stock > 1000 %}
-                    <span class="status-pill status-pill-paid">In Stock</span>
-                    {% elif stats.stock > 0 %}
-                    <span class="status-pill status-pill-pending">Moderate</span>
-                    {% else %}
-                    <span class="status-pill status-pill-lowstock">Depleted</span>
-                    {% endif %}
-                  </td>
-                </tr>
-                <tr>
-                  <td><strong>Maize Seeds</strong></td>
-                  <td class="text-end fw-bold">45.00 KG</td>
-                  <td class="text-center"><span class="status-pill status-pill-lowstock">Low Stock</span></td>
-                </tr>
-                <tr>
-                  <td><strong>Animal Feed</strong></td>
-                  <td class="text-end fw-bold">30.00 KG</td>
-                  <td class="text-center"><span class="status-pill status-pill-lowstock">Low Stock</span></td>
-                </tr>
-                <tr>
-                  <td><strong>Organic Fertilizer</strong></td>
-                  <td class="text-end fw-bold">15.00 KG</td>
-                  <td class="text-center"><span class="status-pill status-pill-lowstock">Low Stock</span></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Operations Secondary Summary (Purchases & Invoices) -->
-<div class="row g-3 mb-4">
-  <div class="col-lg-6">
-    <div class="card h-100">
-      <div class="card-body">
-        <div class="panel-title d-flex justify-content-between align-items-center mb-3">
-          <div class="d-flex align-items-center gap-2">
-            <span class="section-tag section-tag-purchase"><i class="bi bi-box-seam-fill me-1"></i> Purchases</span>
-            <h5 class="mb-0">Recent Grain Procurement</h5>
-          </div>
-          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('purchases') }}">View All</a>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-sm align-middle">
-            <thead>
-              <tr>
-                <th style="width:40px;" class="text-center">#</th>
-                <th>Purchase ID</th>
-                <th>Supplier / Agent</th>
-                <th class="text-end">Intake (KG)</th>
-                <th class="text-end">Total Cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for r in recent_purchases %}
-              <tr>
-                <td class="text-center"><span class="table-seq-num">{{ loop.index }}</span></td>
-                <td><span class="purchase-id-pill">{{ r.purchase_id }}</span></td>
-                <td><strong>{{ r.local_agent }}</strong></td>
-                <td class="text-end fw-bold text-success">{{ '{:,.2f}'.format(r.quantity_received_kg) }} KG</td>
-                <td class="text-end fw-bold">{{ r.total_cost|money }}</td>
-              </tr>
-              {% else %}
-              <tr><td colspan="5" class="text-center text-muted py-2">No procurement recorded yet.</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-lg-6">
-    <div class="card h-100">
-      <div class="card-body">
-        <div class="panel-title d-flex justify-content-between align-items-center mb-3">
-          <div class="d-flex align-items-center gap-2">
-            <span class="section-tag section-tag-customer"><i class="bi bi-receipt me-1"></i> Invoices</span>
-            <h5 class="mb-0">Recent Invoices Generated</h5>
-          </div>
-          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('invoice') }}">View Invoices</a>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-sm align-middle">
-            <thead>
-              <tr>
-                <th style="width:40px;" class="text-center">#</th>
-                <th>Invoice Number</th>
-                <th>Customer</th>
-                <th>Date</th>
-                <th class="text-end">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for r in recent_invoices %}
-              <tr>
-                <td class="text-center"><span class="table-seq-num">{{ loop.index }}</span></td>
-                <td><a href="{{url_for('invoice',transaction_id=r.sales_id)}}"><code>{{ r.invoice_number }}</code></a></td>
-                <td><strong>{{ r.customer_name }}</strong></td>
-                <td><small class="text-muted">{{ r.invoice_date|pretty_date }}</small></td>
-                <td class="text-end">
-                  <a class="btn btn-sm btn-outline-primary py-0 px-2" href="{{url_for('invoice',transaction_id=r.sales_id)}}">View</a>
-                </td>
-              </tr>
-              {% else %}
-              <tr><td colspan="5" class="text-center text-muted py-2">No invoices generated yet.</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-
+<script id="dxData" type="application/json">{{ {'series': d.series, 'methods': d.methods, 'showPurchases': can.purchases, 'showSales': can.sales, 'showCollections': can.payments}|tojson }}</script>
 {% endblock %}
 
 {% block scripts %}
 <script>
-const dashboardDate = document.getElementById('dashboardDate');
-if (dashboardDate) {
-  dashboardDate.textContent = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date());
-}
+(function () {
+  const hour = new Date().getHours();
+  const greeting = document.getElementById('dxGreeting');
+  if (greeting) greeting.textContent = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
-const heroBanner = document.querySelector('.welcome-hero-banner');
-if (heroBanner && heroBanner.dataset.heroImage) {
-  heroBanner.style.setProperty('--dashboard-hero-image', 'url("' + heroBanner.dataset.heroImage + '")');
-}
+  const header = document.querySelector('.dx-header');
+  if (header && header.dataset.heroImage) header.style.setProperty('--dx-hero', 'url("' + header.dataset.heroImage + '")');
 
-const inventorySpotlight = document.querySelector('.inventory-spotlight');
-if (inventorySpotlight && inventorySpotlight.dataset.inventoryImage) {
-  inventorySpotlight.style.background = 'url("' + inventorySpotlight.dataset.inventoryImage + '") center/cover no-repeat';
-}
-
-const chartDataEl = document.getElementById('dashboardChartData');
-const rawMonthlySales = chartDataEl && chartDataEl.dataset.monthlySales ? JSON.parse(chartDataEl.dataset.monthlySales) : [];
-const rawMonthlyPurchases = chartDataEl && chartDataEl.dataset.monthlyPurchases ? JSON.parse(chartDataEl.dataset.monthlyPurchases) : [];
-
-const overviewCanvas = document.getElementById('overviewChart');
-if (overviewCanvas) {
-  const chartLabels = rawMonthlySales.length ? rawMonthlySales.map(item => item.month) : ['Sep 1', 'Sep 5', 'Sep 10', 'Sep 15', 'Sep 20', 'Sep 25', 'Sep 30'];
-  const salesData = rawMonthlySales.length ? rawMonthlySales.map(item => Number(item.revenue || 0)) : [5000, 8000, 6500, 11000, 7500, 9200, 14000];
-  const purchaseData = rawMonthlyPurchases.length ? rawMonthlyPurchases.map(item => Number(item.cost || 0)) : [4200, 5800, 7000, 6800, 7600, 9500, 11000];
-
-  new Chart(overviewCanvas, {
-    type: 'line',
-    data: {
-      labels: chartLabels,
-      datasets: [
-        {
-          label: 'Sales (GHS)',
-          data: salesData,
-          borderColor: '#16a34a',
-          backgroundColor: 'rgba(22, 163, 74, 0.12)',
-          fill: true,
-          tension: 0.35,
-          borderWidth: 2.5,
-          pointBackgroundColor: '#16a34a',
-          pointRadius: 4
-        },
-        {
-          label: 'Purchases (GHS)',
-          data: purchaseData,
-          borderColor: '#0f766e',
-          backgroundColor: 'rgba(15, 118, 110, 0.10)',
-          fill: false,
-          tension: 0.28,
-          borderWidth: 1.5,
-          pointBackgroundColor: '#0f766e',
-          pointRadius: 3
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
-      },
-      scales: {
-        y: {
-          beginAtZero: true,
-          grid: { color: 'rgba(0,0,0,0.06)' },
-          ticks: { font: { size: 10 } }
-        },
-        x: {
-          grid: { display: false },
-          ticks: { font: { size: 10 } }
-        }
-      }
-    }
+  document.querySelectorAll('.dx-spark').forEach(svg => {
+    const values = svg.dataset.spark.split(',').map(Number);
+    if (values.length < 2 || !values.some(v => v > 0)) { svg.style.display = 'none'; return; }
+    const max = Math.max(...values), min = Math.min(...values), span = (max - min) || 1;
+    const pts = values.map((v, i) => [(i / (values.length - 1)) * 96, 26 - ((v - min) / span) * 24]);
+    const line = pts.map(p => p.join(',')).join(' ');
+    svg.innerHTML = '<polygon points="0,28 ' + line + ' 96,28" class="dx-spark-fill"/><polyline points="' + line + '" class="dx-spark-line"/>';
   });
-}
 
-const productCanvas = document.getElementById('productChart');
-if (productCanvas) {
-  new Chart(productCanvas, {
-    type: 'doughnut',
-    data: {
-      labels: ['Maize Supply', 'Maize Seeds', 'Animal Feed', 'Other Products'],
-      datasets: [{
-        data: [68, 12, 8, 12],
-        backgroundColor: ['#16a34a', '#f59e0b', '#2563eb', '#94a3b8'],
-        borderWidth: 2,
-        borderColor: '#ffffff'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      cutout: '72%',
-      plugins: {
-        legend: { display: false }
+  const data = JSON.parse(document.getElementById('dxData').textContent);
+  const dark = () => document.body.dataset.theme === 'dark';
+  const ink = () => dark() ? '#c9dccf' : '#52665b';
+  const grid = () => dark() ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.06)';
+  const gh = v => 'GHS ' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const palette = ['#16a34a', '#2563eb', '#f59e0b', '#7c3aed', '#0d9488', '#dc2626'];
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+
+  const trendCanvas = document.getElementById('dxTrend');
+  let trend, methods;
+  if (trendCanvas) {
+    const datasets = [];
+    if (data.showSales) datasets.push({ label: 'Sales', data: data.series.revenue, borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.14)', fill: true, tension: 0.35, borderWidth: 2.5, pointRadius: 2, pointHoverRadius: 5 });
+    if (data.showCollections) datasets.push({ label: 'Collected', data: data.series.collected, borderColor: '#2563eb', tension: 0.35, borderWidth: 2, pointRadius: 2, pointHoverRadius: 5 });
+    if (data.showPurchases) datasets.push({ label: 'Purchases', data: data.series.purchases, borderColor: '#d97706', borderDash: [5, 4], tension: 0.35, borderWidth: 1.75, pointRadius: 0, pointHoverRadius: 4 });
+    trend = new Chart(trendCanvas, {
+      type: 'line',
+      data: { labels: data.series.labels, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, color: ink() } },
+                   tooltip: { callbacks: { label: c => c.dataset.label + ': ' + gh(c.parsed.y) } } },
+        scales: { y: { beginAtZero: true, grid: { color: grid() }, ticks: { color: ink(), callback: v => Number(v).toLocaleString() } },
+                  x: { grid: { display: false }, ticks: { color: ink(), maxTicksLimit: 10, autoSkip: true } } }
       }
-    }
-  });
-}
+    });
+  }
+
+  const methodCanvas = document.getElementById('dxMethods');
+  if (methodCanvas && data.methods.length) {
+    methods = new Chart(methodCanvas, {
+      type: 'doughnut',
+      data: { labels: data.methods.map(m => m.method), datasets: [{ data: data.methods.map(m => m.amount), backgroundColor: data.methods.map((_, i) => palette[i % palette.length]), borderWidth: 2, borderColor: dark() ? '#182820' : '#ffffff' }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: '68%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.label + ': ' + gh(c.parsed) } } } }
+    });
+    document.querySelectorAll('#dxMethodsLegend i[data-i]').forEach(el => { el.style.background = palette[Number(el.dataset.i) % palette.length]; });
+  }
+
+  const themeButton = document.getElementById('themeToggle');
+  if (themeButton) themeButton.addEventListener('click', () => setTimeout(() => {
+    if (trend) { trend.options.scales.y.grid.color = grid(); trend.options.scales.y.ticks.color = ink(); trend.options.scales.x.ticks.color = ink(); trend.options.plugins.legend.labels.color = ink(); trend.update(); }
+    if (methods) { methods.data.datasets[0].borderColor = dark() ? '#182820' : '#ffffff'; methods.update(); }
+  }, 0));
+})();
 </script>
-<div id="dashboardChartData" data-monthly-sales='{{ monthly_sales|tojson|safe }}' data-monthly-purchases='{{ monthly_purchases|tojson|safe }}' hidden></div>
 {% endblock %}

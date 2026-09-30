@@ -20,6 +20,28 @@ A Flask + SQLite web application for maize trading/distribution.
 - Stock-movement CSV export for warehouse reconciliation
 - Responsive business interface
 
+## Analytics and smart assistance
+
+Every area has the same three-part layout: **enter data, review the ledger, analyse**. All figures are calculated live from your records (deleted and reversed entries are excluded).
+
+| Area | What you get |
+|---|---|
+| Dashboard | Period picker, KPIs with change vs the previous period, smart insights, receivables ageing, top customers |
+| Analytics (Admin / Manager / Accountant) | Business health score, sales outlook, price spread, cash flow, customer and supplier performance, custom date range, print, CSV |
+| Purchases | Live purchase check (real cost per KG, shortfall, price vs history), supplier memory, scorecards, restock assistant |
+| Sales | Live sale check (profit, margin, stock, customer balance), price suggestions, pricing guide, risky-sale detection |
+| Customers | Duplicate check while typing, credit score, segments (champion, loyal, at risk...), directory filters |
+| Payments | Open-sales picker, payment check, collections analytics, slow payers, "about to pass 60 days" watch |
+| Stock | Stock age (FIFO), ledger reconciliation, turnover, flow and level charts |
+| Invoices | Invoice health, ageing of unpaid invoices, "chase first" list |
+| Audit log | Activity insights: failed sign-ins, after-hours changes, sensitive actions, log-clearing warning |
+| Notifications | One prioritised alert per real issue, each linking to the screen that fixes it |
+| AI Assistant | Answers such as "Who should I call?", "Which supplier is best?", "When should I reorder?" from verified data |
+
+Set `ADUFARMS_LOW_STOCK_KG` to change the stock level that triggers low-stock alerts (default 1000).
+
+Provision accounts with `python create_admin.py` (random passwords, shown once; existing accounts are never overwritten unless you pass `--reset`).
+
 ## Run on Windows PowerShell
 
 ```powershell
