@@ -10,3 +10,4 @@ instance/
 backups/
 exports/
 .pytest_cache/
+test_data/
