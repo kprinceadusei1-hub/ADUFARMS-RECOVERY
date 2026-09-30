@@ -186,27 +186,33 @@
           <a href="{{ url_for('reports') }}" class="small text-decoration-none">View All</a>
         </div>
         <ul class="activity-timeline">
+          {% if recent %}{% set s = recent[0] %}
           <li class="activity-item">
             <div class="activity-dot activity-dot-green"></div>
             <div class="small">
-              <strong>Sale recorded:</strong> Maize Supply Dispatch<br>
-              <span class="text-muted">Live ledger updated</span>
+              <strong>Latest sale:</strong> {{ s.name }} &middot; {{ s.total_sale|money }}<br>
+              <span class="text-muted">{{ s.sales_id }} &middot; {{ s.sale_date }}</span>
             </div>
-          </li>
+          </li>{% endif %}
+          {% if recent_payments %}{% set p = recent_payments[0] %}
           <li class="activity-item">
             <div class="activity-dot activity-dot-blue"></div>
             <div class="small">
-              <strong>Payment received:</strong> GHS settlement<br>
-              <span class="text-muted">Mobile Money &amp; Cash</span>
+              <strong>Latest payment:</strong> {{ p.customer_name }} &middot; {{ p.amount|money }}<br>
+              <span class="text-muted">{{ p.payment_method or 'Payment' }} &middot; {{ p.payment_date }}</span>
             </div>
-          </li>
+          </li>{% endif %}
+          {% if recent_purchases %}{% set u = recent_purchases[0] %}
           <li class="activity-item">
             <div class="activity-dot activity-dot-amber"></div>
             <div class="small">
-              <strong>Customer ledger:</strong> Balance verified<br>
-              <span class="text-muted">Credit status cleared</span>
+              <strong>Latest purchase:</strong> {{ u.local_agent or 'Supplier' }} &middot; {{ '{:,.2f}'.format(u.quantity_received_kg) }} KG<br>
+              <span class="text-muted">{{ u.purchase_id }} &middot; {{ u.purchase_date }}</span>
             </div>
-          </li>
+          </li>{% endif %}
+          {% if not (recent or recent_payments or recent_purchases) %}
+          <li class="activity-item"><div class="small text-muted">No activity recorded yet.</div></li>
+          {% endif %}
         </ul>
       </div>
     </div>
@@ -521,6 +527,7 @@
 {% endblock %}
 
 {% block scripts %}
+<div id="dashboardChartData" data-series='{{ chart_series|tojson|safe }}' data-status='{{ [stats.paid, stats.part, stats.unpaid]|tojson|safe }}' hidden></div>
 <script>
 const dashboardDate = document.getElementById('dashboardDate');
 if (dashboardDate) {
@@ -621,5 +628,4 @@ if (productCanvas && typeof Chart !== 'undefined') {
   });
 }
 </script>
-<div id="dashboardChartData" data-series='{{ chart_series|tojson|safe }}' data-status='{{ [stats.paid, stats.part, stats.unpaid]|tojson|safe }}' hidden></div>
 {% endblock %}

@@ -18,7 +18,7 @@ A Flask + SQLite web application for maize trading/distribution.
 - SQLite database
 - Filterable audit log with CSV export
 - Stock-movement CSV export for warehouse reconciliation
-- Responsive business interface
+- Responsive business interface; Bootstrap, icons and Chart.js are bundled in `static/vendor` so the app works offline
 
 ## Run on Windows PowerShell
 
