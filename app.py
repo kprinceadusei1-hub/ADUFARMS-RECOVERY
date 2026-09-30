@@ -24,14 +24,14 @@ except Exception:
 import stock_service as stock_svc
 import dashboard_service
 import analytics_service
-import alerts_service
-import audit_service
-import invoices_service
-import inventory_service
-import payments_service
-import customers_service
-import sales_service
 import purchases_service
+import sales_service
+import customers_service
+import payments_service
+import inventory_service
+import invoices_service
+import audit_service
+import alerts_service
 import backup_service as backup_svc
 import assistant_service
 
