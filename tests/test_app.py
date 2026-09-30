@@ -415,5 +415,6 @@ def test_period_helpers():
 def test_dashboard_shows_no_invented_figures(client):
     login_session(client)
     html = client.get("/dashboard").get_data(as_text=True)
-    assert "Animal Feed" not in html and "Maize Seeds" not in html
+    assert "Executive overview" in html or "Welcome back" in html
+    assert "Animal Feed" not in html and "Maize Seeds" not in html and "Organic Fertilizer" not in html
     assert "12% <span" not in html

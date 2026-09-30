@@ -396,7 +396,7 @@
           <div class="panel-title d-flex justify-content-between align-items-center mb-2">
             <div class="d-flex align-items-center gap-2">
               <i class="bi bi-box-seam text-danger fs-5"></i>
-              <h5 class="mb-0">Low Stock Products</h5>
+              <h5 class="mb-0">Maize Stock</h5>
             </div>
             <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('stock') }}">View All</a>
           </div>
@@ -411,7 +411,7 @@
               </thead>
               <tbody>
                 <tr>
-                  <td><strong>Yellow Maize (Grade-A)</strong></td>
+                  <td><strong>Maize</strong></td>
                   <td class="text-end fw-bold">{{ '{:,.2f}'.format(stats.stock) }} KG</td>
                   <td class="text-center">
                     {% if stats.stock > 1000 %}
@@ -422,21 +422,6 @@
                     <span class="status-pill status-pill-lowstock">Depleted</span>
                     {% endif %}
                   </td>
-                </tr>
-                <tr>
-                  <td><strong>Maize Seeds</strong></td>
-                  <td class="text-end fw-bold">45.00 KG</td>
-                  <td class="text-center"><span class="status-pill status-pill-lowstock">Low Stock</span></td>
-                </tr>
-                <tr>
-                  <td><strong>Animal Feed</strong></td>
-                  <td class="text-end fw-bold">30.00 KG</td>
-                  <td class="text-center"><span class="status-pill status-pill-lowstock">Low Stock</span></td>
-                </tr>
-                <tr>
-                  <td><strong>Organic Fertilizer</strong></td>
-                  <td class="text-end fw-bold">15.00 KG</td>
-                  <td class="text-center"><span class="status-pill status-pill-lowstock">Low Stock</span></td>
                 </tr>
               </tbody>
             </table>
