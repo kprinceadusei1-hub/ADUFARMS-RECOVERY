@@ -12,7 +12,7 @@ A Flask + SQLite web application for maize trading/distribution.
 - Printable A4 invoice and PDF export
 - Customer/transaction search
 - Customer ledger with statements, opening balances and derived outstanding balances
-- Dashboard: stock, sales, payments, expenses and estimated profit
+- Dashboard: live KPIs with real month-over-month trends, six-month sales/collections/purchases chart, payment-status breakdown, activity feed, stock position and outstanding customer balances
 - Verified database assistant for stock, activity, balances and top-customer questions
 - Official branding path: `static/images/branding/adufarms-logo.jpg`
 - SQLite database
@@ -49,11 +49,9 @@ cd ADUFARMS
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+python create_admin.py   # creates role accounts with generated passwords (shown once)
 python app.py
 ```
-
-Then open:
-http://127.0.0.1:5000
 
 ## Production on Windows
 
@@ -65,6 +63,7 @@ $env:ADUFARMS_SECRET_KEY = "generate-a-long-random-secret"
 $env:ADUFARMS_COOKIE_SECURE = "1" # Use only when served over HTTPS
 $env:ADUFARMS_HOST = "127.0.0.1"
 $env:ADUFARMS_PORT = "5000"
+$env:ADUFARMS_LOW_STOCK_KG = "1000" # stock level that triggers low-stock alerts
  .\.venv\Scripts\Activate.ps1
 python run_production.py
 ```
@@ -74,10 +73,13 @@ Use a reverse proxy with HTTPS when exposing the service beyond the local machin
 Run the automated checks with:
 
 ```powershell
+pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
 ## First login
+Run `python create_admin.py` to provision the role accounts. It never uses well-known default passwords: set `ADUFARMS_ADMIN_PASSWORD` (etc.) yourself, or a strong random password is generated and shown once. Existing accounts are left alone unless you pass `--reset`.
+
 Use an administrator account already provisioned for your environment. The application does not display or create a known default password.
 
 Staff can create purchases, customers, sales and payments. Financial-record edits, reversals, permanent deletion, user management, backups and audit logs are restricted to administrators.

@@ -4,13 +4,13 @@
       <span class="brand-mark brand-initials" aria-hidden="true">AF</span>
       <span class="brand-copy"><strong>ADUFARMS</strong><span>MAIZE TRADING &amp;<br>DISTRIBUTION</span></span>
     </a>
-    <button class="sidebar-collapse" id="sidebarCollapse" type="button" aria-label="Collapse sidebar" title="Collapse sidebar">
+    <button class="sidebar-collapse" id="sidebarCollapse" type="button" aria-label="Toggle sidebar" title="Toggle sidebar" data-tip="Toggle sidebar">
       <i class="bi bi-layout-sidebar-inset" aria-hidden="true"></i>
     </button>
   </div>
 
   <div class="sidebar-actions">
-    <button class="new-transaction-trigger" id="newTransactionToggle" type="button" title="New transaction" aria-expanded="false" aria-controls="newTransactionPanel">
+    <button class="new-transaction-trigger" id="newTransactionToggle" type="button" data-tip="New transaction" aria-expanded="false" aria-controls="newTransactionPanel" aria-label="New transaction">
       <span class="new-transaction-icon"><i class="bi bi-plus-lg" aria-hidden="true"></i></span><span class="nav-label">New transaction</span><i class="bi bi-chevron-down new-transaction-chevron" aria-hidden="true"></i>
     </button>
     <div class="sidebar-popover new-transaction-panel" id="newTransactionPanel">
@@ -28,7 +28,7 @@
     {% for endpoint, label, icon in nav_items if endpoint != 'analytics' or user_can('view_analytics') %}
       {% set nav_active = request.endpoint == endpoint or (endpoint == 'customers' and request.endpoint == 'sales') %}
       {% if endpoint == 'purchases' %}<div class="sidebar-nav-divider" aria-hidden="true"></div>{% endif %}
-      <a class="{% if nav_active %}active{% endif %}" href="{{ url_for(endpoint) }}" title="{{ label }}"{% if nav_active %} aria-current="page"{% endif %}>
+      <a class="{% if nav_active %}active{% endif %}" href="{{ url_for(endpoint) }}" data-tip="{{ label }}"{% if nav_active %} aria-current="page"{% endif %} aria-label="{{ label }}">
         <span class="nav-icon"><i class="bi bi-{{ icon }}" aria-hidden="true"></i></span><span class="nav-label">{{ label }}</span>{% if nav_active %}<span class="nav-active-dot" aria-hidden="true"></span>{% endif %}
       </a>
     {% endfor %}
@@ -47,7 +47,7 @@
         {% else %}
           {% set admin_url = url_for(endpoint) %}
         {% endif %}
-        <a class="{% if admin_active %}active{% endif %}" href="{{ admin_url }}" title="{{ label }}"{% if admin_active %} aria-current="page"{% endif %}>
+        <a class="{% if admin_active %}active{% endif %}" href="{{ admin_url }}" data-tip="{{ label }}"{% if admin_active %} aria-current="page"{% endif %} aria-label="{{ label }}">
           <span class="nav-icon"><i class="bi bi-{{ icon }}" aria-hidden="true"></i></span><span class="nav-label">{{ label }}</span>{% if admin_active %}<span class="nav-active-dot" aria-hidden="true"></span>{% endif %}
         </a>
       {% endfor %}
@@ -56,7 +56,7 @@
 
   <div class="sidebar-account">
     <div class="sidebar-profile-menu">
-      <button class="sidebar-profile-card" id="sidebarProfileToggle" type="button" title="Open profile menu" aria-label="Open profile menu" aria-expanded="false" aria-controls="sidebarProfilePanel">
+      <button class="sidebar-profile-card" id="sidebarProfileToggle" type="button" data-tip="{{ session.get('full_name') or session.get('username') or 'Profile' }}" aria-label="Open profile menu" aria-expanded="false" aria-controls="sidebarProfilePanel">
         {% if session.get('profile_image') %}<img class="avatar" src="{{ url_for('static', filename='images/users/' + session.get('profile_image')) }}" alt="">
         {% else %}<span class="avatar avatar-initials" aria-hidden="true">{{ (session.get('full_name') or session.get('username') or 'A')[:1]|upper }}</span>{% endif %}
         <span class="sidebar-profile-copy"><strong>{{ session.get('full_name') or session.get('username') }}</strong><small>{{ session.get('role')|title }}</small></span>
@@ -70,5 +70,8 @@
       </div>
     </div>
   </div>
+  <button class="rail-expand" id="railExpand" type="button" aria-label="Expand sidebar" data-tip="Expand sidebar">
+    <i class="bi bi-chevron-double-right" aria-hidden="true"></i>
+  </button>
 </aside>
 <div class="sidebar-scrim" id="sidebarScrim"></div>

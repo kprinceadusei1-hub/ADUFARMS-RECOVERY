@@ -1,5 +1,61 @@
 {% extends "base.html" %}
 {% block title %}My Profile - ADUFARMS{% endblock %}
 {% block content %}
-<div class="dashboard-heading"><div><span class="eyebrow">ACCOUNT</span><h2>My profile</h2><p>Manage your identity, profile photo, and account security.</p></div></div><div class="row g-3 mt-1"><div class="col-lg-5"><div class="card profile-card"><div class="card-body text-center"><div class="profile-avatar-wrap">{% if user.profile_image %}<img class="profile-avatar mb-3" src="{{ url_for('static', filename='images/users/' + user.profile_image) }}" alt="Profile image">{% else %}<span class="profile-avatar profile-avatar-fallback mb-3" aria-label="Default profile avatar">{{ (user.full_name or user.username or 'A')[:1]|upper }}</span>{% endif %}</div><h4>{{ user.full_name }}</h4><p class="text-muted mb-4">{{ user.username }} · {{ user.role|title }}</p><form method="post" enctype="multipart/form-data" class="profile-upload-form"><input type="hidden" name="action" value="image">{{ csrf_input() }}<label class="btn btn-primary w-100 mb-2" for="profileImageInput"><i class="bi bi-camera me-1"></i> Change profile photo</label><input class="visually-hidden" id="profileImageInput" type="file" name="profile_image" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"><button class="btn btn-outline-primary w-100" type="submit">Upload Profile Photo</button></form>{% if user.profile_image %}<form method="post" class="mt-2"><input type="hidden" name="action" value="remove_image">{{ csrf_input() }}<button class="btn btn-link text-danger btn-sm" type="submit"><i class="bi bi-trash3 me-1"></i> Remove photo</button></form>{% endif %}<div class="small text-muted mt-3">JPG, PNG or WEBP · Max 2 MB</div></div></div></div><div class="col-lg-7"><div class="card" id="security"><div class="card-body"><h5>Account settings</h5><h6 class="text-muted">Change password</h6><form method="post"><input type="hidden" name="action" value="password">{{ csrf_input() }}<label class="form-label">Current password</label><input class="form-control mb-3" name="current_password" type="password" required><label class="form-label">New password</label><input class="form-control mb-2" name="new_password" type="password" minlength="12" required><div class="form-text mb-3">Use 12 or more characters with uppercase, lowercase, a number, and a symbol.</div><button class="btn btn-primary">Change password</button></form></div></div></div></div>
+<div class="dashboard-heading">
+  <div>
+    <span class="eyebrow">ACCOUNT</span>
+    <h2>My profile</h2>
+    <p>Manage your identity, profile photo, and account security.</p>
+  </div>
+</div>
+<div class="row g-3 mt-1">
+  <div class="col-lg-5">
+    <div class="card profile-card">
+      <div class="card-body text-center">
+        <div class="profile-avatar-wrap">
+          {% if user.profile_image %}
+          <img class="profile-avatar mb-3" src="{{ url_for('static', filename='images/users/' + user.profile_image) }}" alt="Profile image">
+          {% else %}
+          <span class="profile-avatar profile-avatar-fallback mb-3" aria-label="Default profile avatar">{{ (user.full_name or user.username or 'A')[:1]|upper }}</span>
+          {% endif %}
+        </div>
+        <h4>{{ user.full_name }}</h4>
+        <p class="text-muted mb-4">{{ user.username }} · {{ user.role|title }}</p>
+        <form method="post" enctype="multipart/form-data" class="profile-upload-form">
+          <input type="hidden" name="action" value="image">
+          {{ csrf_input() }}
+          <label class="btn btn-primary w-100 mb-2" for="profileImageInput"><i class="bi bi-camera me-1"></i> Change profile photo</label>
+          <input class="visually-hidden" id="profileImageInput" type="file" name="profile_image" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
+          <button class="btn btn-outline-primary w-100" type="submit">Upload Profile Photo</button>
+        </form>
+        {% if user.profile_image %}
+        <form method="post" class="mt-2">
+          <input type="hidden" name="action" value="remove_image">
+          {{ csrf_input() }}
+          <button class="btn btn-link text-danger btn-sm" type="submit"><i class="bi bi-trash3 me-1"></i> Remove photo</button>
+        </form>
+        {% endif %}
+        <div class="small text-muted mt-3">JPG, PNG or WEBP · Max 2 MB</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card" id="security">
+      <div class="card-body">
+        <h5>Account settings</h5>
+        <h6 class="text-muted">Change password</h6>
+        <form method="post">
+          <input type="hidden" name="action" value="password">
+          {{ csrf_input() }}
+          <label class="form-label" for="currentPassword">Current password</label>
+          <input class="form-control mb-3" id="currentPassword" name="current_password" type="password" autocomplete="current-password" required>
+          <label class="form-label" for="newPassword">New password</label>
+          <input class="form-control mb-2" id="newPassword" name="new_password" type="password" minlength="12" autocomplete="new-password" required>
+          <div class="form-text mb-3">Use 12 or more characters with uppercase, lowercase, a number, and a symbol.</div>
+          <button class="btn btn-primary" type="submit">Change password</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

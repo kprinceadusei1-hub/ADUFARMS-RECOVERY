@@ -15,7 +15,7 @@
 <div class="col-md-2"><label class="form-label">Transport Cost</label><input type="number" step="0.01" min="0" name="transport_cost" value="{{record.transport_cost}}" class="form-control"></div>
 <div class="col-md-2"><label class="form-label">Other Expenses</label><input type="number" step="0.01" min="0" name="other_expenses" value="{{record.other_expenses}}" class="form-control"></div>
 <div class="col-md-2"><label class="form-label">Quantity Received (KG)</label><input type="number" step="0.01" min="0" name="quantity_received_kg" value="{{record.quantity_received_kg}}" class="form-control" required></div>
-<div class="col-12"><button class="btn btn-primary">UPDATE PURCHASE</button> <a class="btn btn-outline-secondary" href="{{url_for('purchases')}}">CANCEL</a></div>
+<div class="col-12"><button class="btn btn-primary" type="submit">UPDATE PURCHASE</button> <a class="btn btn-outline-secondary" href="{{url_for('purchases')}}">CANCEL</a></div>
 </form>
 {% elif kind == 'sale' %}
 <form method="post" class="row g-3" data-confirm="Are you sure you want to update this sale?">
@@ -25,7 +25,7 @@
 <div class="col-md-2"><label class="form-label">Customer Phone</label><input name="customer_phone" value="{{record.customer_phone or ''}}" class="form-control"></div>
 <div class="col-md-2"><label class="form-label">Quantity Sold (KG)</label><input type="number" min="0.01" step="0.01" name="quantity_kg" value="{{record.quantity_kg}}" class="form-control" required></div>
 <div class="col-md-2"><label class="form-label">Selling Price / KG</label><input type="number" min="0" step="0.01" name="selling_price_kg" value="{{record.selling_price_kg}}" class="form-control" required></div>
-<div class="col-12"><button class="btn btn-primary">UPDATE SALE</button> <a class="btn btn-outline-secondary" href="{{url_for('sales')}}">CANCEL</a></div>
+<div class="col-12"><button class="btn btn-primary" type="submit">UPDATE SALE</button> <a class="btn btn-outline-secondary" href="{{url_for('sales')}}">CANCEL</a></div>
 </form>
 {% elif kind == 'payment' %}
 <form method="post" class="row g-3" data-confirm="Are you sure you want to update this payment?">
@@ -36,7 +36,7 @@
 <div class="col-md-2"><label class="form-label">Payment Method</label><select name="payment_method" class="form-select" required>{% for method in ['Cash','Mobile Money','Bank Transfer','Cheque','Other'] %}<option {% if record.payment_method == method %}selected{% endif %}>{{method}}</option>{% endfor %}</select></div>
 <div class="col-md-3"><label class="form-label">Payment Reference</label><input name="payment_reference" value="{{record.payment_reference or ''}}" class="form-control"></div>
 <div class="col-md-3"><label class="form-label">Notes</label><input name="notes" value="{{record.notes or ''}}" class="form-control"></div>
-<div class="col-12"><button class="btn btn-primary">UPDATE PAYMENT</button> <a class="btn btn-outline-secondary" href="{{url_for('payments')}}">CANCEL</a></div>
+<div class="col-12"><button class="btn btn-primary" type="submit">UPDATE PAYMENT</button> <a class="btn btn-outline-secondary" href="{{url_for('payments')}}">CANCEL</a></div>
 </form>
 {% elif kind == 'user' %}
 <form method="post" class="row g-3" data-confirm="Are you sure you want to update this user?">
@@ -45,7 +45,7 @@
 <div class="col-md-3"><label class="form-label">Full Name</label><input name="full_name" value="{{record.full_name}}" class="form-control" required></div>
 <div class="col-md-3"><label class="form-label">New Password</label><input name="password" type="password" class="form-control" minlength="12" placeholder="12+ chars; leave blank to keep current"></div>
 <div class="col-md-2"><label class="form-label">Role</label><select name="role" class="form-select"><option {% if record.role == 'STAFF' %}selected{% endif %}>STAFF</option><option {% if record.role == 'ADMIN' %}selected{% endif %}>ADMIN</option></select></div>
-<div class="col-12"><button class="btn btn-primary">UPDATE USER</button> <a class="btn btn-outline-secondary" href="{{url_for('users')}}">CANCEL</a></div>
+<div class="col-12"><button class="btn btn-primary" type="submit">UPDATE USER</button> <a class="btn btn-outline-secondary" href="{{url_for('users')}}">CANCEL</a></div>
 </form>
 {% endif %}
 </div></div>

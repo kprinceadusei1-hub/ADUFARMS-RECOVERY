@@ -78,7 +78,7 @@
             <td><span class="fw-semibold">{{ b.mtime }}</span></td>
             <td class="text-end text-muted">{{ "{:,.1f}".format(b.size / 1024) }} KB</td>
             <td class="text-end">
-              <form method="post" action="{{ url_for('admin_restore') }}" class="d-inline" onsubmit="return confirm('Restore {{ b.name }}? A safety backup of the current database will be saved first.');">
+              <form method="post" action="{{ url_for('admin_restore') }}" class="d-inline" onsubmit="return confirm('Restore this backup? A safety backup of the current database will be saved first.');">
                 {{ csrf_input() }}
                 <input type="hidden" name="backup_name" value="{{ b.name }}">
                 <button class="btn btn-sm btn-outline-warning" type="submit">
@@ -93,6 +93,7 @@
         </tbody>
       </table>
     </div>
+<div class="table-pagination d-flex justify-content-between align-items-center mt-2"><small class="text-muted" data-page-info></small><div class="btn-group btn-group-sm"><button class="btn btn-outline-secondary" data-page-prev type="button">Prev</button><button class="btn btn-outline-secondary" data-page-next type="button">Next</button></div></div>
   </div>
 </div>
 {% endblock %}
