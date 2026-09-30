@@ -18,7 +18,18 @@ A Flask + SQLite web application for maize trading/distribution.
 - SQLite database
 - Filterable audit log with CSV export
 - Stock-movement CSV export for warehouse reconciliation
-- Responsive business interface; Bootstrap, icons and Chart.js are bundled in `static/vendor` so the app works offline
+- Responsive business interface; Bootstrap, icons, Chart.js and fonts are bundled in `static/vendor` so the app works offline
+
+## Quick start in VS Code (Windows)
+
+```powershell
+git fetch origin
+git checkout claude/brave-johnson-ti1ay2
+code .
+.\run_dev.ps1 -Demo     # first run: sets up .venv, creates the database and admin, loads demo figures
+```
+
+Then open http://127.0.0.1:5000. On a new database the admin password is printed once in the terminal. Use `.\run_dev.ps1` (without `-Demo`) on a database that already holds real records; it never overwrites existing users. In VS Code you can also press F5 (`ADUFARMS: run app`) once `.venv` exists and the interpreter is selected.
 
 ## Run on Windows PowerShell
 

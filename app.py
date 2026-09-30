@@ -546,8 +546,8 @@ def add_security_headers(response):
     if request.endpoint != "static":
         response.headers.setdefault("Cache-Control", "no-store, max-age=0")
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; "
+        "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; "
+        "font-src 'self' data:; script-src 'self' 'unsafe-inline'; "
         "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     )
     if app.config["SESSION_COOKIE_SECURE"]:
