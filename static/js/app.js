@@ -317,7 +317,12 @@ document.addEventListener("DOMContentLoaded", function () {
 			if (!table) return;
 			const query = input.value.toLowerCase();
 			table.querySelectorAll("tbody tr").forEach(function (row) {
+				if (row.classList.contains("customer-detail")) return;
 				row.hidden = query && !row.textContent.toLowerCase().includes(query);
+				const detail = row.nextElementSibling;
+				if (detail && detail.classList.contains("customer-detail")) {
+					if (row.hidden) detail.hidden = true;
+				}
 			});
 			const card = table.closest(".card");
 			if (card) paginateCard(card);
@@ -337,10 +342,19 @@ document.addEventListener("DOMContentLoaded", function () {
 			table.querySelectorAll("thead th").forEach(function (h) { delete h.dataset.dir; h.setAttribute("aria-sort", "none"); });
 			th.dataset.dir = asc ? "asc" : "desc";
 			th.setAttribute("aria-sort", asc ? "ascending" : "descending");
-			const rows = Array.from(table.querySelectorAll("tbody tr"));
-			rows.sort(function (a, b) {
-				const av = (a.children[idx] ? a.children[idx].textContent.trim() : "").toLowerCase();
-				const bv = (b.children[idx] ? b.children[idx].textContent.trim() : "").toLowerCase();
+			const pairs = Array.from(table.querySelectorAll("tbody tr"))
+				.filter(function (r) { return !r.classList.contains("customer-detail"); })
+				.map(function (r) {
+					const next = r.nextElementSibling;
+					return { row: r, detail: (next && next.classList.contains("customer-detail")) ? next : null };
+				});
+			function cellText(pair) {
+				const cell = pair.row.children[idx];
+				return (cell ? cell.textContent.trim() : "").toLowerCase();
+			}
+			pairs.sort(function (a, b) {
+				const av = cellText(a);
+				const bv = cellText(b);
 				const an = parseFloat(av.replace(/[^0-9.\-]/g, ""));
 				const bn = parseFloat(bv.replace(/[^0-9.\-]/g, ""));
 				let cmp = 0;
@@ -349,24 +363,53 @@ document.addEventListener("DOMContentLoaded", function () {
 				return asc ? cmp : -cmp;
 			});
 			const tb = table.querySelector("tbody");
-			rows.forEach(function (r) { tb.appendChild(r); });
+			pairs.forEach(function (p) {
+				tb.appendChild(p.row);
+				if (p.detail) tb.appendChild(p.detail);
+			});
 		});
 		th.addEventListener("keydown", function (e) {
 			if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activateSort(); }
 		});
 	});
 	window.paginateCard = paginateCard;
+	document.querySelectorAll("tr[data-customer-row]").forEach(function (row) {
+		function toggleDetail() {
+			const detail = row.nextElementSibling;
+			if (!detail || !detail.classList.contains("customer-detail")) return;
+			const open = detail.hidden;
+			detail.hidden = !open;
+			if (!open) detail.style.display = "none";
+			else if (row.style.display !== "none") detail.style.display = "";
+			row.setAttribute("aria-expanded", open ? "true" : "false");
+		}
+		row.addEventListener("click", function (e) {
+			if (e.target.closest("a, button")) return;
+			toggleDetail();
+		});
+		row.addEventListener("keydown", function (e) {
+			if (e.target.closest("a, button")) return;
+			if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleDetail(); }
+		});
+	});
 	function paginateCard(card) {
 		const table = card.querySelector("table");
 		if (!table) return;
 		let page = parseInt(card.dataset.page || "1", 10);
 		const per = 15;
-		const rows = Array.from(table.querySelectorAll("tbody tr")).filter(function (r) { return !r.hidden; });
+		const rows = Array.from(table.querySelectorAll("tbody tr"))
+			.filter(function (r) { return !r.hidden && !r.classList.contains("customer-detail"); });
 		const pages = Math.max(1, Math.ceil(rows.length / per));
 		if (page > pages) page = pages;
 		card.dataset.page = String(page);
 		rows.forEach(function (r, i) {
-			r.style.display = (i >= (page - 1) * per && i < page * per) ? "" : "none";
+			const show = (i >= (page - 1) * per && i < page * per);
+			r.style.display = show ? "" : "none";
+			const detail = r.nextElementSibling;
+			if (detail && detail.classList.contains("customer-detail")) {
+				if (!show) detail.style.display = "none";
+				else if (!detail.hidden) detail.style.display = "";
+			}
 		});
 		const info = card.querySelector("[data-page-info]");
 		if (info) info.textContent = "Page " + page + " of " + pages + " · " + rows.length + " rows";

@@ -111,7 +111,7 @@
           {% for row in rows %}
           {% set billed = row.total_sales + row.opening_balance %}
           {% set balance = billed - row.total_paid %}
-          <tr class="customer-row-accent {{ row.name|customer_theme }}">
+          <tr class="customer-row-accent {{ row.name|customer_theme }}" data-customer-row tabindex="0" aria-expanded="false" title="Click to view contact and account details">
             <td class="text-center">
               <span class="table-seq-num">{{ loop.index }}</span>
             </td>
@@ -179,6 +179,33 @@
                   {% endif %}
                 </ul>
               </span>
+            </td>
+          </tr>
+          <tr class="customer-detail" hidden>
+            <td colspan="9">
+              <div class="customer-detail-panel">
+                <div class="row g-3">
+                  <div class="col-md-4">
+                    <h6 class="text-muted text-uppercase small fw-bold">Contact</h6>
+                    <div><i class="bi bi-telephone me-1"></i>{{ row.phone or 'Not recorded' }}</div>
+                    {% if row.location %}<div><i class="bi bi-geo-alt me-1"></i>{{ row.location }}</div>{% endif %}
+                    {% if row.address %}<div><i class="bi bi-house me-1"></i>{{ row.address }}</div>{% endif %}
+                    {% if row.notes %}<div class="text-muted small"><i class="bi bi-sticky me-1"></i>{{ row.notes }}</div>{% endif %}
+                  </div>
+                  <div class="col-md-4">
+                    <h6 class="text-muted text-uppercase small fw-bold">Account</h6>
+                    <div>Type: {{ row.customer_type or '-' }}</div>
+                    <div>Opening balance: {{ (row.opening_balance or 0)|money }}</div>
+                    <div>Joined: {{ row.created_at|pretty_date }}</div>
+                    <div>Total billed: <strong>{{ billed|money }}</strong> · Paid: <strong class="text-success">{{ row.total_paid|money }}</strong> · Outstanding: <strong>{{ balance|money }}</strong></div>
+                  </div>
+                  <div class="col-md-4">
+                    <h6 class="text-muted text-uppercase small fw-bold">Ledger</h6>
+                    <div class="text-muted small mb-2">Full transaction history, invoices and payments.</div>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('customer_statement', customer_id=row.id) }}"><i class="bi bi-file-earmark-text me-1"></i>Open statement</a>
+                  </div>
+                </div>
+              </div>
             </td>
           </tr>
           {% else %}

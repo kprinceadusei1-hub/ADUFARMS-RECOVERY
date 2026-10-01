@@ -1444,3 +1444,8 @@ body.sidebar-collapsed .sidebar-group-list { display:flex; padding-left:0; borde
 #customersTable .badge-customer-type, #customersTable .badge-balance { font-size:.68rem; padding:3px 7px; }
 #customersTable .btn-sm { padding:4px 8px; font-size:.76rem; }
 #customersTable td.text-end { white-space:nowrap; }
+tr[data-customer-row] { cursor:pointer; }
+tr[data-customer-row]:hover { background:rgba(217,157,33,.05); }
+tr[data-customer-row]:focus-visible { outline:3px solid rgba(217,157,33,.42); outline-offset:-3px; }
+.customer-detail-panel { padding:12px 8px; background:var(--panel-soft); border-left:3px solid var(--accent); border-radius:0 0 10px 10px; }
+tr.customer-detail td { padding:0 12px 12px; border-top:0; }
