@@ -26,6 +26,21 @@ document.addEventListener("DOMContentLoaded", function () {
 		loginSubmit.disabled = true;
 		loginSubmit.classList.add("is-loading");
 	});
+	const capsWarning = document.getElementById("capsWarning");
+	if (capsWarning && passwordInput) {
+		const updateCaps = function (event) {
+			if (typeof event.getModifierState === "function") capsWarning.hidden = !event.getModifierState("CapsLock");
+		};
+		passwordInput.addEventListener("keydown", updateCaps);
+		passwordInput.addEventListener("keyup", updateCaps);
+		passwordInput.addEventListener("blur", function () { capsWarning.hidden = true; });
+	}
+	if (loginSubmit) window.addEventListener("pageshow", function (event) {
+		if (event.persisted) {
+			loginSubmit.disabled = false;
+			loginSubmit.classList.remove("is-loading");
+		}
+	});
 	const paymentCustomer = document.getElementById("paymentCustomer");
 	const paymentSale = document.getElementById("paymentSale");
 	if (paymentCustomer && paymentSale) {

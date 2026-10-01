@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, abort, jsonify
+from flask import Flask, make_response, render_template, request, redirect, url_for, flash, session, send_file, abort, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime, date, timedelta
@@ -1349,19 +1349,42 @@ def index():
     return redirect(url_for("dashboard") if "user_id" in session else url_for("login"))
 
 
+_DUMMY_PASSWORD_HASH = generate_password_hash(secrets.token_urlsafe(16))
+
+
+def client_ip_address():
+    """Only trust X-Forwarded-For when the deployment declares a reverse proxy."""
+    if os.environ.get("ADUFARMS_TRUST_PROXY", "0") == "1":
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return request.remote_addr or "127.0.0.1"
+
+
+def render_login(status=200, username=""):
+    response = make_response(render_template("login.html", username=username), status)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    if session.get("user_id"):
+        return redirect(url_for("dashboard"))
     if request.method == "POST":
-        client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "127.0.0.1").split(",")[0].strip()
+        client_ip = client_ip_address()
+        username = request.form.get("username", "").strip()[:80]
         if is_ip_login_rate_limited(client_ip):
             log_action("SECURITY RATE LIMIT", "SYSTEM", f"ip={client_ip}; login attempts exceeded threshold")
-            abort(429, description="Too many failed sign-in attempts from your network. Please wait 10 minutes and try again.")
-        username = request.form.get("username", "").strip()
+            flash("Too many failed sign-in attempts from your network. Please wait 10 minutes and try again.", "warning")
+            return render_login(429, username)
         password = request.form.get("password", "")
         conn = db()
         user = conn.execute("SELECT * FROM users WHERE username=? AND active=1", (username,)).fetchone()
         locked = bool(user and user["locked_until"] and user["locked_until"] > now())
-        if user and not locked and check_password_hash(user["password_hash"], password):
+        # Always hash-compare so response time does not reveal whether a username exists.
+        password_ok = check_password_hash(user["password_hash"] if user else _DUMMY_PASSWORD_HASH, password)
+        if user and not locked and password_ok:
             clear_ip_login_attempts(client_ip)
             conn.execute("UPDATE users SET last_login=?,failed_login_attempts=0,locked_until=NULL WHERE id=?", (now(), user["id"]))
             conn.commit()
@@ -1389,7 +1412,8 @@ def login():
             log_action("LOGIN FAILED", username or "unknown", f"ip={client_ip}; invalid credentials or inactive account")
         conn.close()
         flash("Invalid credentials or account temporarily unavailable.", "danger")
-    return render_template("login.html")
+        return render_login(200, username)
+    return render_login()
 
 
 @app.route("/forgot-password", methods=["GET", "POST"])
