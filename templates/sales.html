@@ -9,6 +9,21 @@
 
 <div class="ops-module ops-module-sales">
 <span id="new" class="anchor-target" aria-hidden="true"></span>
+<div class="um-hero">
+  <div>
+    <span class="eyebrow"><i class="bi bi-cart3"></i> CUSTOMER SALES</span>
+    <h2>Sales &amp; dispatch</h2>
+    <p>Record maize sales, track what customers have paid and keep an eye on margins.</p>
+  </div>
+  <a class="btn um-add-btn" href="#new" data-goto-tab="record"><i class="bi bi-cart-plus"></i> New sale</a>
+</div>
+<div class="um-stats">
+  <div class="um-stat"><span class="um-stat-icon um-green"><i class="bi bi-receipt"></i></span><div><strong>{{ total_sales }}</strong><small>Sales on record</small></div></div>
+  <div class="um-stat"><span class="um-stat-icon um-teal"><i class="bi bi-cash-stack"></i></span><div><strong>{{ ledger_totals.revenue|money }}</strong><small>Billed (current filter)</small></div></div>
+  <div class="um-stat"><span class="um-stat-icon um-gold"><i class="bi bi-wallet2"></i></span><div><strong>{{ ledger_totals.paid|money }}</strong><small>Collected</small></div></div>
+  <div class="um-stat"><span class="um-stat-icon um-red"><i class="bi bi-hourglass-split"></i></span><div><strong>{{ (ledger_totals.revenue - ledger_totals.paid)|money }}</strong><small>Outstanding</small></div></div>
+</div>
+
 {% if related_purchase %}
 <div class="alert alert-info d-flex align-items-start gap-3" role="status">
   <i class="bi bi-info-circle-fill fs-5"></i>
@@ -142,7 +157,7 @@
 
 <!-- ============ LEDGER ============ -->
 <section id="tab-ledger" class="dx-panel" hidden>
-  <div class="card">
+  <div class="card um-card">
     <div class="card-body">
       <form class="dx-filters" method="get" action="{{ url_for('sales') }}">
         {% if related_purchase %}<input type="hidden" name="related_purchase" value="{{ request.args.get('related_purchase') }}">{% endif %}
@@ -178,7 +193,7 @@
       </div>
       {% endif %}
       <div class="table-responsive">
-        <table id="salesTable" class="table table-hover align-middle sortable">
+        <table id="salesTable" class="table um-table align-middle sortable">
           <thead>
             <tr>
               <th style="width:48px;" class="text-center">#</th>
@@ -487,4 +502,5 @@
   }
 })();
 </script>
+<script>document.querySelectorAll('[data-goto-tab]').forEach(function(b){b.addEventListener('click',function(e){e.preventDefault();var t=document.querySelector('.dx-tab[data-tab="'+b.getAttribute('data-goto-tab')+'"]');if(t)t.click();});});</script>
 {% endblock %}

@@ -1233,3 +1233,95 @@ def test_notification_centre_groups_issues_and_respects_permissions(client):
     login_session(client)
     assert client.get("/notifications").status_code == 200 and "Notification center" in client.get("/notifications").get_data(as_text=True)
     assert client.get("/notifications?mark_read=1").status_code == 302
+
+
+def _csrf(client):
+    client.get("/login")
+    with client.session_transaction() as session:
+        return session["csrf_token"]
+
+
+def test_login_redirects_back_to_requested_page_and_blocks_open_redirects(client):
+    seed_admin()
+    application._LOGIN_IP_ATTEMPTS.clear()
+    redirect = client.get("/customers")
+    assert redirect.headers["Location"].endswith("/login?next=/customers")
+    token = _csrf(client)
+    good = client.post("/login", data={"username": "admin", "password": "StrongPassword1!", "csrf_token": token, "next": "/customers"})
+    assert good.status_code == 302 and good.headers["Location"].endswith("/customers")
+    client.get("/logout")
+    token = _csrf(client)
+    evil = client.post("/login", data={"username": "admin", "password": "StrongPassword1!", "csrf_token": token, "next": "//evil.example"})
+    assert evil.headers["Location"].endswith("/dashboard")
+    client.get("/logout")
+
+
+def test_failed_login_keeps_username_and_rate_limit_returns_429(client):
+    seed_admin()
+    application._LOGIN_IP_ATTEMPTS.clear()
+    token = _csrf(client)
+    failed = client.post("/login", data={"username": "ghost", "password": "x", "csrf_token": token})
+    assert failed.status_code == 200 and b'value="ghost"' in failed.data
+    for _ in range(8):
+        application.record_ip_login_attempt("127.0.0.1")
+    limited = client.post("/login", data={"username": "ghost", "password": "x", "csrf_token": token})
+    assert limited.status_code == 429 and b"Too many failed sign-in attempts" in limited.data
+    application._LOGIN_IP_ATTEMPTS.clear()
+
+
+def test_password_reset_token_is_hashed_expires_and_clears_lockout(client):
+    seed_admin()
+    token = "reset-token-for-test"
+    conn = application.db()
+    conn.execute(
+        "UPDATE users SET password_reset_token=?,password_reset_expires_at=?,failed_login_attempts=3,locked_until='2999-01-01 00:00:00' WHERE username='admin'",
+        (application.hash_reset_token(token), "2999-01-01 00:00:00"),
+    )
+    conn.commit()
+    conn.close()
+    assert client.get(f"/reset-password/{token}").status_code == 200
+    csrf = _csrf(client)
+    done = client.post(f"/reset-password/{token}", data={"password": "NewStrongPass9!", "confirmation": "NewStrongPass9!", "csrf_token": csrf})
+    assert done.status_code == 302
+    conn = application.db()
+    row = conn.execute("SELECT password_reset_token,failed_login_attempts,locked_until FROM users WHERE username='admin'").fetchone()
+    conn.execute("UPDATE users SET password_hash=? WHERE username='admin'", (generate_password_hash("StrongPassword1!"),))
+    conn.commit()
+    conn.close()
+    assert row["password_reset_token"] is None and row["failed_login_attempts"] == 0 and row["locked_until"] is None
+    assert client.get(f"/reset-password/{token}").status_code == 302  # token is single-use
+    expired = "expired-token"
+    conn = application.db()
+    conn.execute("UPDATE users SET password_reset_token=?,password_reset_expires_at='2000-01-01 00:00:00' WHERE username='admin'", (application.hash_reset_token(expired),))
+    conn.commit()
+    conn.close()
+    assert client.get(f"/reset-password/{expired}").status_code == 302
+
+
+def test_recovery_email_can_be_saved_then_used_for_password_reset(client):
+    seed_admin()
+    application._LOGIN_IP_ATTEMPTS.clear()
+    login_session(client)
+    token = "recovery-test-token"
+    with client.session_transaction() as session:
+        session["csrf_token"] = token
+    bad = client.post("/profile", data={"action": "email", "email": "a@yahoo.com", "current_password": "StrongPassword1!", "csrf_token": token})
+    assert b"valid Gmail address" in bad.data
+    wrong = client.post("/profile", data={"action": "email", "email": "recover.me@gmail.com", "current_password": "nope", "csrf_token": token})
+    assert b"Current password is incorrect" in wrong.data
+    ok = client.post("/profile", data={"action": "email", "email": "Recover.Me@gmail.com", "current_password": "StrongPassword1!", "csrf_token": token})
+    assert ok.status_code == 200 and b"Recovery email saved" in ok.data
+    conn = application.db()
+    row = conn.execute("SELECT email,email_verified FROM users WHERE id=1").fetchone()
+    conn.close()
+    assert row["email"] == "recover.me@gmail.com" and row["email_verified"] == 0
+    # edit-user keeps the real role instead of silently demoting it
+    conn = application.db()
+    conn.execute("INSERT OR IGNORE INTO users(username,full_name,password_hash,role,active,created_at) VALUES('mgr_test','Mgr Test','x','MANAGER',1,?)", (application.now(),))
+    conn.commit()
+    mgr_id = conn.execute("SELECT id FROM users WHERE username='mgr_test'").fetchone()["id"]
+    conn.execute("UPDATE users SET email=NULL WHERE id=1")
+    conn.commit()
+    conn.close()
+    page = client.get(f"/users/{mgr_id}/edit")
+    assert b'value="MANAGER" selected' in page.data

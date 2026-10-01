@@ -1,99 +1,105 @@
 {% extends "base.html" %}
-{% block title %}Database Backup – ADUFARMS{% endblock %}
+{% block title %}Backup & Restore – ADUFARMS{% endblock %}
 {% block content %}
-<div class="dashboard-heading">
+{% macro fmt_size(n) %}{% if n >= 1048576 %}{{ "{:,.1f}".format(n / 1048576) }} MB{% else %}{{ "{:,.1f}".format(n / 1024) }} KB{% endif %}{% endmacro %}
+<div class="bk-hero">
   <div>
     <span class="eyebrow"><i class="bi bi-database-check"></i> SYSTEM MAINTENANCE</span>
-    <h2>Database Backup &amp; Recovery</h2>
-    <p>Automated and manual database snapshots stored securely outside web access paths.</p>
+    <h2>Backup &amp; Recovery</h2>
+    <p>Integrity-checked snapshots of your records, stored outside web access.</p>
   </div>
-  <form method="post" action="{{ url_for('admin_backup') }}">
+  <form method="post" action="{{ url_for('admin_backup') }}" id="backupForm">
     {{ csrf_input() }}
-    <button class="btn btn-primary" type="submit">
-      <i class="bi bi-database-add me-1"></i> Create Manual Backup
-    </button>
+    <button class="btn bk-primary" type="submit" id="backupBtn"><i class="bi bi-database-add"></i> Create backup now</button>
   </form>
 </div>
 
-<div class="row g-3 mb-3">
-  <div class="col-md-4">
-    <div class="card stat-card h-100">
-      <div class="card-body">
-        <div class="stat-label">Total Backups</div>
-        <div class="stat-value">{{ backups|length }}</div>
-        <div class="stat-support">Stored in secure backup vault</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-4">
-    <div class="card stat-card h-100">
-      <div class="card-body">
-        <div class="stat-label">Backup Protection</div>
-        <div class="stat-value text-success"><i class="bi bi-shield-lock-fill me-1"></i> Enabled</div>
-        <div class="stat-support">Pre-restore &amp; migration auto-snapshots</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-4">
-    <div class="card stat-card h-100">
-      <div class="card-body">
-        <div class="stat-label">Storage Format</div>
-        <div class="stat-value">SQLite DB</div>
-        <div class="stat-support">Zero data loss SQLite backup API</div>
-      </div>
-    </div>
-  </div>
+<div class="um-stats">
+  <div class="um-stat"><span class="um-stat-icon um-green"><i class="bi bi-archive-fill"></i></span><div><strong>{{ backups|length }}</strong><small>Snapshots stored</small></div></div>
+  <div class="um-stat"><span class="um-stat-icon um-teal"><i class="bi bi-clock-history"></i></span><div><strong>{{ newest.age if newest else 'None' }}</strong><small>Latest backup</small></div></div>
+  <div class="um-stat"><span class="um-stat-icon um-gold"><i class="bi bi-hdd-fill"></i></span><div><strong>{{ fmt_size(total_size) }}</strong><small>Total size</small></div></div>
+  <div class="um-stat"><span class="um-stat-icon um-green"><i class="bi bi-shield-lock-fill"></i></span><div><strong>On</strong><small>Checksum protection</small></div></div>
 </div>
 
-<div class="alert alert-info d-flex align-items-start gap-3 mb-3">
-  <i class="bi bi-info-circle-fill fs-5 mt-1"></i>
-  <div>
-    <strong>Safe Recovery Guarantee</strong>
-    <p class="mb-0 small">A safety snapshot is automatically created before any database restoration. Restoring a backup immediately switches active database records to that point in time.</p>
-  </div>
-</div>
+{% if not backups %}
+<div class="bk-note bk-warn"><i class="bi bi-exclamation-triangle-fill"></i><div><strong>No backups yet</strong><span>Create your first backup now so your records can be recovered if something goes wrong.</span></div></div>
+{% endif %}
+<div class="bk-note"><i class="bi bi-shield-check"></i><div><strong>Safe recovery guarantee</strong><span>A safety snapshot of the current database is saved automatically before any restore, and every backup is checksum-verified first.</span></div></div>
 
-<div class="card">
+<div class="card um-card">
   <div class="card-body">
-    <div class="panel-title">
-      <h5>Available Backups ({{ backups|length }})</h5>
-      <div class="table-tools mb-0">
-        <input class="form-control form-control-sm" data-table-search="#backupsTable" placeholder="Search backups...">
+    <div class="um-toolbar">
+      <div class="um-search"><i class="bi bi-search" aria-hidden="true"></i><input id="bkSearch" type="search" placeholder="Search backups" aria-label="Search backups"></div>
+      <div class="um-chips" role="group" aria-label="Filter by type">
+        <button type="button" class="um-chip active" data-kind="">All</button>
+        <button type="button" class="um-chip" data-kind="backup">Backups</button>
+        <button type="button" class="um-chip" data-kind="safety">Safety snapshots</button>
       </div>
     </div>
     <div class="table-responsive">
-      <table id="backupsTable" class="table table-hover table-sm sortable">
-        <thead>
-          <tr>
-            <th data-sort>Backup Filename</th>
-            <th data-sort>Created Date</th>
-            <th data-sort class="text-end">Size</th>
-            <th class="text-end">Action</th>
-          </tr>
-        </thead>
+      <table id="backupsTable" class="table um-table align-middle sortable">
+        <thead><tr><th data-sort>Snapshot</th><th data-sort>Type</th><th data-sort>Created</th><th data-sort class="text-end">Size</th><th class="text-end">Action</th></tr></thead>
         <tbody>
           {% for b in backups %}
-          <tr>
-            <td><code><i class="bi bi-file-earmark-binary me-1"></i>{{ b.name }}</code></td>
-            <td><span class="fw-semibold">{{ b.mtime }}</span></td>
-            <td class="text-end text-muted">{{ "{:,.1f}".format(b.size / 1024) }} KB</td>
+          <tr data-kind="{{ b.kind }}">
+            <td><div class="um-user"><span class="bk-file"><i class="bi bi-file-earmark-binary"></i></span><div><strong>{{ b.name }}</strong><small>{{ b.age }}</small></div></div></td>
+            <td>{% if b.kind == 'safety' %}<span class="um-role um-role-warning"><i class="bi bi-shield-fill-check"></i>Safety snapshot</span>{% else %}<span class="um-role um-role-primary"><i class="bi bi-database-fill"></i>Backup</span>{% endif %}</td>
+            <td><span class="um-muted">{{ b.mtime }}</span></td>
+            <td class="text-end"><span class="um-muted">{{ fmt_size(b.size) }}</span></td>
             <td class="text-end">
-              <form method="post" action="{{ url_for('admin_restore') }}" class="d-inline" onsubmit="return confirm('Restore this backup? A safety backup of the current database will be saved first.');">
-                {{ csrf_input() }}
-                <input type="hidden" name="backup_name" value="{{ b.name }}">
-                <button class="btn btn-sm btn-outline-warning" type="submit">
-                  <i class="bi bi-arrow-counterclockwise me-1"></i>Restore
-                </button>
-              </form>
+              <button type="button" class="bk-restore" data-bs-toggle="modal" data-bs-target="#restoreModal" data-name="{{ b.name }}" data-time="{{ b.mtime }}"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="4"><div class="empty-state"><i class="bi bi-database"></i>No database backups recorded yet.</div></td></tr>
+          <tr><td colspan="5"><div class="um-empty"><i class="bi bi-database"></i><strong>No database backups recorded yet</strong><span>Use "Create backup now" to take the first one.</span></div></td></tr>
           {% endfor %}
+          <tr id="bkEmpty" hidden><td colspan="5"><div class="um-empty"><i class="bi bi-search"></i><strong>No snapshots match your filters</strong></div></td></tr>
         </tbody>
       </table>
     </div>
-<div class="table-pagination d-flex justify-content-between align-items-center mt-2"><small class="text-muted" data-page-info></small><div class="btn-group btn-group-sm"><button class="btn btn-outline-secondary" data-page-prev type="button">Prev</button><button class="btn btn-outline-secondary" data-page-next type="button">Next</button></div></div>
   </div>
 </div>
+
+<div class="modal fade" id="restoreModal" tabindex="-1" aria-labelledby="restoreTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" action="{{ url_for('admin_restore') }}" class="modal-content um-modal">
+      {{ csrf_input() }}
+      <input type="hidden" name="backup_name" id="restoreName">
+      <div class="modal-header"><div><h5 class="modal-title" id="restoreTitle">Restore this backup?</h5><small>This switches your live records to that point in time.</small></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body">
+        <div class="bk-restore-card"><i class="bi bi-file-earmark-binary"></i><div><strong id="restoreFile"></strong><small id="restoreTime"></small></div></div>
+        <ul class="bk-points"><li><i class="bi bi-check-circle-fill"></i> A safety snapshot of the current data is saved first.</li><li><i class="bi bi-exclamation-triangle-fill"></i> Anything recorded after this backup will no longer appear until you restore the safety snapshot.</li></ul>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn bk-primary"><i class="bi bi-arrow-counterclockwise"></i> Restore backup</button></div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById('backupForm'), btn = document.getElementById('backupBtn');
+  if (form) form.addEventListener('submit', function () { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creating backup...'; });
+  var modal = document.getElementById('restoreModal');
+  if (modal) modal.addEventListener('show.bs.modal', function (e) {
+    var d = e.relatedTarget.dataset;
+    document.getElementById('restoreName').value = d.name;
+    document.getElementById('restoreFile').textContent = d.name;
+    document.getElementById('restoreTime').textContent = 'Created ' + d.time;
+  });
+  var search = document.getElementById('bkSearch'), chips = document.querySelectorAll('.um-chip'), kind = '';
+  if (search) {
+    var apply = function () {
+      var q = search.value.trim().toLowerCase(), shown = 0, rows = document.querySelectorAll('#backupsTable tbody tr[data-kind]');
+      rows.forEach(function (row) {
+        var ok = (!q || row.textContent.toLowerCase().indexOf(q) !== -1) && (!kind || row.dataset.kind === kind);
+        row.hidden = !ok; if (ok) shown++;
+      });
+      document.getElementById('bkEmpty').hidden = shown > 0 || !rows.length;
+    };
+    search.addEventListener('input', apply);
+    chips.forEach(function (c) { c.addEventListener('click', function () { chips.forEach(function (x) { x.classList.remove('active'); }); c.classList.add('active'); kind = c.dataset.kind; apply(); }); });
+  }
+})();
+</script>
 {% endblock %}

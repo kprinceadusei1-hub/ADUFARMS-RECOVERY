@@ -1,61 +1,141 @@
 {% extends "base.html" %}
-{% block title %}My Profile - ADUFARMS{% endblock %}
+{% block title %}System Settings - ADUFARMS{% endblock %}
 {% block content %}
-<div class="dashboard-heading">
-  <div>
-    <span class="eyebrow">ACCOUNT</span>
-    <h2>My profile</h2>
-    <p>Manage your identity, profile photo, and account security.</p>
+{% set role_icons = {'ADMIN': 'shield-check', 'MANAGER': 'briefcase', 'SALES_OFFICER': 'cart3', 'INVENTORY_OFFICER': 'boxes', 'ACCOUNTANT': 'calculator', 'VIEWER': 'eye', 'STAFF': 'person'} %}
+{% set is_admin = session.get('role') == 'ADMIN' %}
+<div class="st-hero">
+  <div class="st-hero-user">
+    {% if user.profile_image %}
+    <img class="st-avatar" src="{{ url_for('static', filename='images/users/' + user.profile_image) }}" alt="Profile photo">
+    {% else %}
+    <span class="st-avatar st-avatar-fallback" aria-label="Default profile avatar">{{ (user.full_name or user.username or 'A')[:1]|upper }}</span>
+    {% endif %}
+    <div>
+      <span class="eyebrow"><i class="bi bi-sliders2"></i> SYSTEM SETTINGS</span>
+      <h2>{{ user.full_name }}</h2>
+      <p>@{{ user.username }}<span class="st-role"><i class="bi bi-{{ role_icons.get(user.role, 'person') }}"></i>{{ role_labels_map.get(user.role, user.role|title) }}</span></p>
+    </div>
+  </div>
+  <div class="st-hero-meta">
+    <div><small>Last sign-in</small><strong>{{ user.last_login|pretty_date if user.last_login else 'This session' }}</strong></div>
+    <div><small>Member since</small><strong>{{ user.created_at|pretty_date if user.created_at else '-' }}</strong></div>
   </div>
 </div>
-<div class="row g-3 mt-1">
-  <div class="col-lg-5">
-    <div class="card profile-card">
-      <div class="card-body text-center">
-        <div class="profile-avatar-wrap">
-          {% if user.profile_image %}
-          <img class="profile-avatar mb-3" src="{{ url_for('static', filename='images/users/' + user.profile_image) }}" alt="Profile image">
-          {% else %}
-          <span class="profile-avatar profile-avatar-fallback mb-3" aria-label="Default profile avatar">{{ (user.full_name or user.username or 'A')[:1]|upper }}</span>
-          {% endif %}
-        </div>
-        <h4>{{ user.full_name }}</h4>
-        <p class="text-muted mb-4">{{ user.username }} · {{ user.role|title }}</p>
-        <form method="post" enctype="multipart/form-data" class="profile-upload-form">
+
+<div class="st-grid">
+  <div class="st-col">
+    <section class="card st-card">
+      <div class="card-body">
+        <div class="st-card-head"><span class="st-icon st-green"><i class="bi bi-person-badge"></i></span><div><h5>Profile photo</h5><small>JPG, PNG or WEBP · max 2 MB</small></div></div>
+        <form method="post" enctype="multipart/form-data" class="st-upload" id="photoForm">
           <input type="hidden" name="action" value="image">
           {{ csrf_input() }}
-          <label class="btn btn-primary w-100 mb-2" for="profileImageInput"><i class="bi bi-camera me-1"></i> Change profile photo</label>
-          <input class="visually-hidden" id="profileImageInput" type="file" name="profile_image" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
-          <button class="btn btn-outline-primary w-100" type="submit">Upload Profile Photo</button>
+          <label class="st-drop" for="profileImageInput"><i class="bi bi-cloud-arrow-up"></i><strong id="photoName">Choose a photo</strong><small>Click to browse your files</small></label>
+          <input class="visually-hidden" id="profileImageInput" type="file" name="profile_image" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" required>
+          <button class="btn st-btn" type="submit"><i class="bi bi-upload"></i> Upload photo</button>
         </form>
         {% if user.profile_image %}
         <form method="post" class="mt-2">
           <input type="hidden" name="action" value="remove_image">
           {{ csrf_input() }}
-          <button class="btn btn-link text-danger btn-sm" type="submit"><i class="bi bi-trash3 me-1"></i> Remove photo</button>
+          <button class="btn st-btn-link" type="submit"><i class="bi bi-trash3"></i> Remove current photo</button>
         </form>
         {% endif %}
-        <div class="small text-muted mt-3">JPG, PNG or WEBP · Max 2 MB</div>
       </div>
-    </div>
-  </div>
-  <div class="col-lg-7">
-    <div class="card" id="security">
+    </section>
+
+    <section class="card st-card">
       <div class="card-body">
-        <h5>Account settings</h5>
-        <h6 class="text-muted">Change password</h6>
-        <form method="post">
-          <input type="hidden" name="action" value="password">
+        <div class="st-card-head"><span class="st-icon st-gold"><i class="bi bi-shield-lock"></i></span><div><h5>Security status</h5><small>How your account is protected</small></div></div>
+        <ul class="st-checks">
+          <li class="ok"><i class="bi bi-check-circle-fill"></i><span><strong>Strong password policy</strong><small>12+ characters with mixed case, number and symbol</small></span></li>
+          <li class="{{ 'ok' if user.email and user.email_verified else 'warn' }}"><i class="bi bi-{{ 'check-circle-fill' if user.email and user.email_verified else 'exclamation-circle-fill' }}"></i><span><strong>{{ 'Email verified' if user.email and user.email_verified else 'Email not verified' }}</strong><small>{% if user.email and user.email_verified %}{{ user.email }} · enables two-step sign-in{% else %}Verify an email to enable two-step sign-in and password recovery{% endif %}</small></span></li>
+          <li class="ok"><i class="bi bi-check-circle-fill"></i><span><strong>Automatic sign-out</strong><small>Sessions end after 30 minutes of inactivity</small></span></li>
+        </ul>
+      </div>
+    </section>
+  </div>
+
+  <div class="st-col">
+    <section class="card st-card" id="recovery-email">
+      <div class="card-body">
+        <div class="st-card-head"><span class="st-icon st-gold"><i class="bi bi-envelope-heart"></i></span><div><h5>Recovery email</h5><small>Used to reset your password if you ever forget it</small></div></div>
+        {% if user.email %}
+        <div class="st-email-state {{ 'ok' if user.email_verified else 'warn' }}"><i class="bi bi-{{ 'patch-check-fill' if user.email_verified else 'exclamation-circle-fill' }}"></i><span><strong>{{ user.email }}</strong><small>{{ 'Verified' if user.email_verified else 'Saved - not verified yet. Password reset still works.' }}</small></span></div>
+        {% else %}
+        <div class="st-email-state warn"><i class="bi bi-exclamation-triangle-fill"></i><span><strong>No recovery email yet</strong><small>Add one now, or you will not be able to reset a forgotten password yourself.</small></span></div>
+        {% endif %}
+        <form method="post" class="mt-3">
+          <input type="hidden" name="action" value="email">
           {{ csrf_input() }}
-          <label class="form-label" for="currentPassword">Current password</label>
-          <input class="form-control mb-3" id="currentPassword" name="current_password" type="password" autocomplete="current-password" required>
-          <label class="form-label" for="newPassword">New password</label>
-          <input class="form-control mb-2" id="newPassword" name="new_password" type="password" minlength="12" autocomplete="new-password" required>
-          <div class="form-text mb-3">Use 12 or more characters with uppercase, lowercase, a number, and a symbol.</div>
-          <button class="btn btn-primary" type="submit">Change password</button>
+          <div class="mb-3"><label class="form-label" for="recoveryEmail">Gmail address</label><input class="form-control" id="recoveryEmail" name="email" type="email" value="{{ user.email or '' }}" placeholder="name@gmail.com" autocomplete="email"></div>
+          <div class="mb-3"><label class="form-label" for="emailPassword">Current password <small class="text-muted">(to confirm it is you)</small></label><input class="form-control" id="emailPassword" name="current_password" type="password" autocomplete="current-password" required></div>
+          <button class="btn st-btn" type="submit"><i class="bi bi-envelope-check"></i> Save recovery email</button>
+          <small class="d-block mt-2 text-muted">Leave the address empty and save to remove it.</small>
         </form>
       </div>
-    </div>
+    </section>
+
+    <section class="card st-card" id="security">
+      <div class="card-body">
+        <div class="st-card-head"><span class="st-icon st-teal"><i class="bi bi-key"></i></span><div><h5>Change password</h5><small>Choose something you do not use anywhere else</small></div></div>
+        <form method="post" id="passwordForm">
+          <input type="hidden" name="action" value="password">
+          {{ csrf_input() }}
+          <div class="mb-3">
+            <label class="form-label" for="currentPassword">Current password</label>
+            <div class="st-pw"><input class="form-control" id="currentPassword" name="current_password" type="password" autocomplete="current-password" required><button type="button" class="st-eye" data-toggle-for="currentPassword" aria-label="Show password"><i class="bi bi-eye"></i></button></div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="newPassword">New password</label>
+            <div class="st-pw"><input class="form-control" id="newPassword" name="new_password" type="password" minlength="12" autocomplete="new-password" required><button type="button" class="st-eye" data-toggle-for="newPassword" aria-label="Show password"><i class="bi bi-eye"></i></button></div>
+            <div class="pw-meter" aria-live="polite"><div class="pw-meter-bar"><span id="stMeterFill"></span></div><small id="stMeterText">Strength: enter a password</small></div>
+            <ul class="pw-rules" id="stRules"><li data-rule="len">12+ characters</li><li data-rule="lower">Lowercase letter</li><li data-rule="upper">Uppercase letter</li><li data-rule="digit">Number</li><li data-rule="symbol">Symbol</li></ul>
+          </div>
+          <button class="btn st-btn" type="submit"><i class="bi bi-check2-circle"></i> Update password</button>
+        </form>
+      </div>
+    </section>
+
+    {% if is_admin %}
+    <section class="card st-card">
+      <div class="card-body">
+        <div class="st-card-head"><span class="st-icon st-blue"><i class="bi bi-gear-wide-connected"></i></span><div><h5>Administration</h5><small>Jump to system management tools</small></div></div>
+        <div class="st-links">
+          <a href="{{ url_for('users') }}"><i class="bi bi-people"></i><span><strong>Users &amp; roles</strong><small>Manage team access</small></span><i class="bi bi-chevron-right"></i></a>
+          <a href="{{ url_for('dashboard_settings') }}"><i class="bi bi-image"></i><span><strong>Dashboard settings</strong><small>Branding and imagery</small></span><i class="bi bi-chevron-right"></i></a>
+          <a href="{{ url_for('admin_backup') }}"><i class="bi bi-database-down"></i><span><strong>Backup &amp; restore</strong><small>Protect your records</small></span><i class="bi bi-chevron-right"></i></a>
+          <a href="{{ url_for('deleted_records') }}"><i class="bi bi-archive"></i><span><strong>Recycle bin</strong><small>Recover removed entries</small></span><i class="bi bi-chevron-right"></i></a>
+          <a href="{{ url_for('audit_logs') }}"><i class="bi bi-shield-check"></i><span><strong>Audit log</strong><small>Review system activity</small></span><i class="bi bi-chevron-right"></i></a>
+        </div>
+      </div>
+    </section>
+    {% endif %}
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var file = document.getElementById('profileImageInput'), label = document.getElementById('photoName');
+  if (file && label) file.addEventListener('change', function () { label.textContent = file.files.length ? file.files[0].name : 'Choose a photo'; });
+  document.querySelectorAll('.st-eye').forEach(function (btn) {
+    var input = document.getElementById(btn.dataset.toggleFor);
+    btn.addEventListener('click', function () {
+      var show = input.type === 'password'; input.type = show ? 'text' : 'password';
+      btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+      btn.querySelector('i').className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+    });
+  });
+  var pw = document.getElementById('newPassword'), fill = document.getElementById('stMeterFill'), text = document.getElementById('stMeterText');
+  var labels = ['Very weak', 'Weak', 'Fair', 'Good', 'Strong'];
+  pw.addEventListener('input', function () {
+    var v = pw.value, c = { len: v.length >= 12, lower: /[a-z]/.test(v), upper: /[A-Z]/.test(v), digit: /\d/.test(v), symbol: /[^A-Za-z0-9]/.test(v) }, score = 0;
+    Object.keys(c).forEach(function (k) { var li = document.querySelector('#stRules [data-rule="' + k + '"]'); if (li) li.classList.toggle('ok', c[k]); if (c[k]) score++; });
+    if (score === 5 && v.length < 16) score = 4;
+    fill.style.width = (v ? Math.max(score, 1) * 20 : 0) + '%'; fill.dataset.level = String(score);
+    text.textContent = v ? 'Strength: ' + labels[Math.max(score - 1, 0)] : 'Strength: enter a password';
+  });
+})();
+</script>
 {% endblock %}

@@ -2,21 +2,26 @@
 {% block title %}Dashboard Settings - ADUFARMS Maize Management System{% endblock %}
 {% block content %}
 
-<div class="dashboard-heading mb-4">
+<div class="um-hero">
   <div>
-    <span class="eyebrow">ADMIN</span>
+    <span class="eyebrow"><i class="bi bi-images"></i> ADMIN</span>
     <h2>Dashboard settings</h2>
     <p>Control the branding and imagery used across the operational dashboard and related pages.</p>
   </div>
 </div>
+<div class="um-stats">
+  <div class="um-stat"><span class="um-stat-icon um-green"><i class="bi bi-images"></i></span><div><strong>{{ dashboard_image_slots|length }}</strong><small>Image slots</small></div></div>
+  <div class="um-stat"><span class="um-stat-icon um-gold"><i class="bi bi-file-earmark-image"></i></span><div><strong>JPG &middot; PNG &middot; WEBP</strong><small>Accepted formats</small></div></div>
+  <div class="um-stat"><span class="um-stat-icon um-teal"><i class="bi bi-aspect-ratio"></i></span><div><strong>1200&times;500</strong><small>Recommended size</small></div></div>
+</div>
 
-<section class="dashboard-imagery card" id="dashboard-imagery">
+<section class="dashboard-imagery card st-card" id="dashboard-imagery">
   <div class="card-body">
-    <div class="panel-title d-flex justify-content-between align-items-start gap-3 mb-3">
-      <div>
-        <span class="eyebrow">DASHBOARD SETTINGS</span>
-        <h5 class="mb-1">Dashboard imagery</h5>
-        <p class="text-muted small mb-0">Choose a JPG, PNG or WEBP image for each section. Recommended size: 1200x500 or larger for best quality.</p>
+    <div class="st-card-head">
+      <span class="st-icon st-green"><i class="bi bi-images"></i></span>
+      <div class="flex-grow-1">
+        <h5>Dashboard imagery</h5>
+        <small>Choose a JPG, PNG or WEBP image for each section. Recommended size: 1200x500 or larger for best quality.</small>
       </div>
       <span class="badge bg-success-subtle text-success-emphasis px-2 py-1">Live preview</span>
     </div>

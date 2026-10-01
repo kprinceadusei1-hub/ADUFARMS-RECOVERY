@@ -10,6 +10,8 @@ import io
 import csv
 import secrets
 import hmac
+import hashlib
+import threading    
 import smtplib
 from email.message import EmailMessage
 from markupsafe import Markup
@@ -621,11 +623,27 @@ def add_stock_movement(movement_type, reference, quantity, movement_date, notes=
         conn.close()
 
 
+def login_redirect():
+    """Send an unauthenticated visitor to sign-in, remembering the page they wanted (GET only)."""
+    if request.method == "GET" and request.endpoint not in (None, "static"):
+        flash("Please sign in to continue.", "info")
+        target = request.full_path.rstrip("?")
+        return redirect(url_for("login", next=target))
+    return redirect(url_for("login"))
+
+
+def safe_next_url(target):
+    """Accept only same-site relative paths to prevent open redirects."""
+    if not target or not target.startswith("/") or target.startswith("//") or "\\" in target:
+        return None
+    return target
+
+
 def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if "user_id" not in session:
-            return redirect(url_for("login"))
+            return login_redirect()
         return f(*args, **kwargs)
     return wrapper
 
@@ -652,6 +670,7 @@ ROLE_LABELS = {
     "VIEWER": "Viewer",
     "STAFF": "Staff",
 }
+app.jinja_env.globals["role_labels_map"] = ROLE_LABELS
 
 ROLE_PERMISSIONS = {
     "ADMIN": {
@@ -744,7 +763,7 @@ def require_permission(permission_name):
         @wraps(view_func)
         def wrapper(*args, **kwargs):
             if "user_id" not in session:
-                return redirect(url_for("login"))
+                return login_redirect()
             if not user_has_permission(permission_name):
                 abort(403)
             return view_func(*args, **kwargs)
@@ -757,7 +776,7 @@ def require_any_permission(*permission_names):
         @wraps(view_func)
         def wrapper(*args, **kwargs):
             if "user_id" not in session:
-                return redirect(url_for("login"))
+                return login_redirect()
             if not any(user_has_permission(permission) for permission in permission_names):
                 abort(403)
             return view_func(*args, **kwargs)
@@ -804,6 +823,10 @@ def get_float(name, default=0):
         raise ValueError(f"Invalid value for {name.replace('_',' ')}.")
 
 
+def smtp_configured():
+    return all(os.environ.get(key) for key in ("ADUFARMS_SMTP_USERNAME", "ADUFARMS_SMTP_PASSWORD"))
+
+
 def send_verification_email(email, token):
     host = os.environ.get("ADUFARMS_SMTP_HOST", "smtp.gmail.com")
     port = int(os.environ.get("ADUFARMS_SMTP_PORT", "587"))
@@ -811,6 +834,7 @@ def send_verification_email(email, token):
     password = os.environ.get("ADUFARMS_SMTP_PASSWORD")
     sender = os.environ.get("ADUFARMS_SMTP_FROM") or username
     if not all((host, username, password, sender)):
+        app.logger.warning("Email not sent: ADUFARMS_SMTP_USERNAME / ADUFARMS_SMTP_PASSWORD are not set in .env")
         return False
     assert host is not None and username is not None and password is not None and sender is not None
     base_url = os.environ.get("ADUFARMS_PUBLIC_URL", request.url_root.rstrip("/"))
@@ -838,6 +862,7 @@ def send_password_reset_email(email, token):
     password = os.environ.get("ADUFARMS_SMTP_PASSWORD")
     sender = os.environ.get("ADUFARMS_SMTP_FROM") or username
     if not all((host, username, password, sender)):
+        app.logger.warning("Email not sent: ADUFARMS_SMTP_USERNAME / ADUFARMS_SMTP_PASSWORD are not set in .env")
         return False
     assert host is not None and username is not None and password is not None and sender is not None
     base_url = os.environ.get("ADUFARMS_PUBLIC_URL", request.url_root.rstrip("/"))
@@ -855,35 +880,6 @@ def send_password_reset_email(email, token):
         return True
     except (OSError, smtplib.SMTPException):
         app.logger.exception("Password reset email could not be sent")
-        return False
-
-
-def send_login_otp_email(email, code):
-    """Send a short-lived login code through the configured Gmail SMTP account."""
-    host = os.environ.get("ADUFARMS_SMTP_HOST", "smtp.gmail.com")
-    port = int(os.environ.get("ADUFARMS_SMTP_PORT", "587"))
-    username = os.environ.get("ADUFARMS_SMTP_USERNAME")
-    password = os.environ.get("ADUFARMS_SMTP_PASSWORD")
-    sender = os.environ.get("ADUFARMS_SMTP_FROM") or username
-    if not all((host, username, password, sender)):
-        return False
-    assert host is not None and username is not None and password is not None and sender is not None
-    message = EmailMessage()
-    message["Subject"] = "Your ADUFARMS sign-in code"
-    message["From"] = sender
-    message["To"] = email
-    message.set_content(
-        f"Your ADUFARMS sign-in code is: {code}\n\n"
-        "It expires in 10 minutes. Do not share this code with anyone."
-    )
-    try:
-        with smtplib.SMTP(host, port, timeout=15) as smtp:
-            smtp.starttls()
-            smtp.login(username, password)
-            smtp.send_message(message)
-        return True
-    except (OSError, smtplib.SMTPException):
-        app.logger.exception("Login OTP email could not be sent")
         return False
 
 
@@ -1299,26 +1295,38 @@ def customer_balance_badge_filter(balance):
 
 # Enterprise Security: In-Memory IP Login Rate Limiter & Magic Byte Validator
 _LOGIN_IP_ATTEMPTS = {}
+_LOGIN_LOCK = threading.Lock()
 
-def is_ip_login_rate_limited(ip_addr, max_attempts=8, window_seconds=600):
+
+def is_ip_login_rate_limited(ip_addr, max_attempts=8, window_seconds=600, bucket="login"):
     if not ip_addr:
         return False
+    key = (bucket, ip_addr)
     now_ts = datetime.now().timestamp()
-    attempts = [ts for ts in _LOGIN_IP_ATTEMPTS.get(ip_addr, []) if now_ts - ts < window_seconds]
-    _LOGIN_IP_ATTEMPTS[ip_addr] = attempts
-    return len(attempts) >= max_attempts
+    with _LOGIN_LOCK:
+        attempts = [ts for ts in _LOGIN_IP_ATTEMPTS.get(key, []) if now_ts - ts < window_seconds]
+        if attempts:
+            _LOGIN_IP_ATTEMPTS[key] = attempts
+        else:
+            _LOGIN_IP_ATTEMPTS.pop(key, None)
+        return len(attempts) >= max_attempts
 
-def record_ip_login_attempt(ip_addr):
+
+def record_ip_login_attempt(ip_addr, bucket="login", window_seconds=600):
     if not ip_addr:
         return
+    key = (bucket, ip_addr)
     now_ts = datetime.now().timestamp()
-    attempts = [ts for ts in _LOGIN_IP_ATTEMPTS.get(ip_addr, []) if now_ts - ts < 600]
-    attempts.append(now_ts)
-    _LOGIN_IP_ATTEMPTS[ip_addr] = attempts
+    with _LOGIN_LOCK:
+        attempts = [ts for ts in _LOGIN_IP_ATTEMPTS.get(key, []) if now_ts - ts < window_seconds]
+        attempts.append(now_ts)
+        _LOGIN_IP_ATTEMPTS[key] = attempts
 
-def clear_ip_login_attempts(ip_addr):
-    if ip_addr in _LOGIN_IP_ATTEMPTS:
-        _LOGIN_IP_ATTEMPTS.pop(ip_addr, None)
+
+def clear_ip_login_attempts(ip_addr, bucket="login"):
+    with _LOGIN_LOCK:
+        _LOGIN_IP_ATTEMPTS.pop((bucket, ip_addr), None)
+
 
 def is_valid_image_bytes(stream):
     """Deep inspect magic bytes of an uploaded image stream to prevent polyglot or disguised executable uploads."""
@@ -1352,6 +1360,22 @@ def index():
 _DUMMY_PASSWORD_HASH = generate_password_hash(secrets.token_urlsafe(16))
 
 
+def finish_login(user, client_ip, next_url=None):
+    conn = db()
+    conn.execute("UPDATE users SET last_login=?,failed_login_attempts=0,locked_until=NULL WHERE id=?", (now(), user["id"]))
+    conn.commit()
+    conn.close()
+    session.clear()
+    session.permanent = True
+    session["user_id"] = user["id"]
+    session["username"] = user["username"]
+    session["full_name"] = user["full_name"]
+    session["role"] = user["role"]
+    session["csrf_token"] = secrets.token_urlsafe(32)
+    log_action("LOGIN SUCCESS", user["username"], f"user_id={user['id']}; ip={client_ip}; role={user['role']}")
+    return redirect(next_url or url_for("dashboard"))
+
+
 def client_ip_address():
     """Only trust X-Forwarded-For when the deployment declares a reverse proxy."""
     if os.environ.get("ADUFARMS_TRUST_PROXY", "0") == "1":
@@ -1362,7 +1386,8 @@ def client_ip_address():
 
 
 def render_login(status=200, username=""):
-    response = make_response(render_template("login.html", username=username), status)
+    next_url = safe_next_url(request.values.get("next", ""))
+    response = make_response(render_template("login.html", username=username, next_url=next_url), status)
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -1386,18 +1411,9 @@ def login():
         password_ok = check_password_hash(user["password_hash"] if user else _DUMMY_PASSWORD_HASH, password)
         if user and not locked and password_ok:
             clear_ip_login_attempts(client_ip)
-            conn.execute("UPDATE users SET last_login=?,failed_login_attempts=0,locked_until=NULL WHERE id=?", (now(), user["id"]))
-            conn.commit()
+            next_url = safe_next_url(request.form.get("next", ""))
             conn.close()
-            session.clear()
-            session.permanent = True
-            session["user_id"] = user["id"]
-            session["username"] = user["username"]
-            session["full_name"] = user["full_name"]
-            session["role"] = user["role"]
-            session["csrf_token"] = secrets.token_urlsafe(32)
-            log_action("LOGIN SUCCESS", username, f"user_id={user['id']}; ip={client_ip}; role={user['role']}")
-            return redirect(url_for("dashboard"))
+            return finish_login(user, client_ip, next_url)
         record_ip_login_attempt(client_ip)
         if user and not locked:
             attempts = int(user["failed_login_attempts"] or 0) + 1
@@ -1416,19 +1432,60 @@ def login():
     return render_login()
 
 
+def set_recovery_email(conn, user_id, username, email):
+    """Store a Gmail recovery address for a user and send a verification link when email is configured.
+    Returns a flash message. Raises ValueError for bad input or an address used by another account."""
+    email = (email or "").strip().lower()
+    if not email:
+        conn.execute("UPDATE users SET email=NULL,email_verified=0,verification_token=NULL,verification_expires_at=NULL WHERE id=?", (user_id,))
+        conn.commit()
+        log_action("RECOVERY EMAIL REMOVED", username, f"user_id={user_id}")
+        return "Recovery email removed."
+    if not is_gmail_address(email):
+        raise ValueError("Enter a valid Gmail address (name@gmail.com).")
+    taken = conn.execute("SELECT 1 FROM users WHERE lower(email)=? AND id<>?", (email, user_id)).fetchone()
+    if taken:
+        raise ValueError("That email address is already used by another account.")
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.now() + timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute("UPDATE users SET email=?,email_verified=0,verification_token=?,verification_expires_at=? WHERE id=?",
+                 (email, hash_reset_token(token), expires, user_id))
+    conn.commit()
+    log_action("RECOVERY EMAIL SET", username, f"user_id={user_id}")
+    if smtp_configured() and send_verification_email(email, token):
+        return f"Recovery email saved. We sent a verification link to {email}."
+    return "Recovery email saved. You can reset your password with it now; verification could not be emailed because email is not set up on the server."
+
+
+def hash_reset_token(token):
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 @app.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
+    if session.get("user_id"):
+        return redirect(url_for("dashboard"))
+    if request.method == "POST" and not smtp_configured():
+        flash("Email is not set up on this system, so a reset link cannot be sent. Please ask an administrator to reset your password.", "warning")
+        return render_template("forgot_password.html")
     if request.method == "POST":
+        client_ip = client_ip_address()
+        if is_ip_login_rate_limited(client_ip, max_attempts=5, window_seconds=900, bucket="reset"):
+            log_action("SECURITY RATE LIMIT", "SYSTEM", f"ip={client_ip}; password reset requests exceeded threshold")
+            flash("Too many reset requests. Please wait 15 minutes and try again.", "warning")
+            return make_response(render_template("forgot_password.html"), 429)
+        record_ip_login_attempt(client_ip, bucket="reset", window_seconds=900)
         email = request.form.get("email", "").strip().lower()
         if is_gmail_address(email):
             conn = db()
             user = conn.execute("SELECT id,email FROM users WHERE lower(email)=lower(?) AND active=1", (email,)).fetchone()
             if user and user["email"]:
                 token = secrets.token_urlsafe(32)
-                expires_at = (datetime.now() + timedelta(hours=1)).isoformat(timespec="seconds")
-                conn.execute("UPDATE users SET password_reset_token=?,password_reset_expires_at=? WHERE id=?", (token, expires_at, user["id"]))
+                expires_at = (datetime.now() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+                conn.execute("UPDATE users SET password_reset_token=?,password_reset_expires_at=? WHERE id=?", (hash_reset_token(token), expires_at, user["id"]))
                 conn.commit()
                 send_password_reset_email(user["email"], token)
+                log_action("PASSWORD RESET REQUESTED", email, f"user_id={user['id']}; ip={client_ip}")
             conn.close()
         flash("If that email is registered, a password reset link has been sent.", "info")
         return redirect(url_for("login"))
@@ -1438,7 +1495,7 @@ def forgot_password():
 @app.route("/reset-password/<token>", methods=["GET", "POST"])
 def reset_password(token):
     conn = db()
-    user = conn.execute("SELECT id FROM users WHERE password_reset_token=? AND password_reset_expires_at>? AND active=1", (token, now())).fetchone()
+    user = conn.execute("SELECT id,username FROM users WHERE password_reset_token=? AND password_reset_expires_at>? AND active=1", (hash_reset_token(token), now())).fetchone()
     if not user:
         conn.close()
         flash("That password reset link is invalid or has expired.", "danger")
@@ -1451,9 +1508,10 @@ def reset_password(token):
             conn.close()
             flash(policy_error or "Passwords must match.", "danger")
             return render_template("reset_password.html")
-        conn.execute("UPDATE users SET password_hash=?,password_reset_token=NULL,password_reset_expires_at=NULL WHERE id=?", (generate_password_hash(password), user["id"]))
+        conn.execute("UPDATE users SET password_hash=?,password_reset_token=NULL,password_reset_expires_at=NULL,failed_login_attempts=0,locked_until=NULL WHERE id=?", (generate_password_hash(password), user["id"]))
         conn.commit()
         conn.close()
+        log_action("PASSWORD RESET", user["username"], f"user_id={user['id']}; ip={client_ip_address()}")
         flash("Password reset successfully. You can now sign in.", "success")
         return redirect(url_for("login"))
     conn.close()
@@ -1463,7 +1521,7 @@ def reset_password(token):
 @app.route("/verify-email/<token>")
 def verify_email(token):
     conn = db()
-    user = conn.execute("SELECT id FROM users WHERE verification_token=? AND verification_expires_at>?", (token, now())).fetchone()
+    user = conn.execute("SELECT id FROM users WHERE verification_token=? AND verification_expires_at>?", (hash_reset_token(token), now())).fetchone()
     if not user:
         conn.close()
         flash("That verification link is invalid or has expired.", "danger")
@@ -1471,7 +1529,7 @@ def verify_email(token):
     conn.execute("UPDATE users SET email_verified=1,verification_token=NULL,verification_expires_at=NULL WHERE id=?", (user["id"],))
     conn.commit()
     conn.close()
-    flash("Email verified. You can now sign in with your email address.", "success")
+    flash("Email verified. Your recovery email is confirmed.", "success")
     return redirect(url_for("login"))
 
 
@@ -1480,6 +1538,7 @@ def logout():
     if session.get("username"):
         log_action("LOGOUT", str(session.get("username") or ""), f"user_id={session.get('user_id') or ''}")
     session.clear()
+    flash("You have been signed out securely.", "success")
     return redirect(url_for("login"))
 
 
@@ -3007,6 +3066,16 @@ def profile():
                 conn.commit()
                 log_action("PASSWORD CHANGED", user["username"], f"user_id={user['id']}")
                 flash("Password changed successfully.", "success")
+        elif action == "email":
+            if not check_password_hash(user["password_hash"], request.form.get("current_password", "")):
+                flash("Current password is incorrect.", "danger")
+            else:
+                try:
+                    flash(set_recovery_email(conn, user["id"], user["username"], request.form.get("email", "")), "success")
+                except ValueError as error:
+                    flash(str(error), "danger")
+                except sqlite3.IntegrityError:
+                    flash("That email address is already used by another account.", "danger")
         elif action == "image":
             image = request.files.get("profile_image")
             if image and image.filename:
@@ -3082,9 +3151,9 @@ def users():
             if conn is not None:
                 conn.close()
     conn=db()
-    rows=conn.execute("SELECT id,username,full_name,role,active,created_at FROM users ORDER BY id").fetchall()
+    rows=conn.execute("SELECT id,username,full_name,role,active,created_at,email,email_verified,last_login,locked_until,profile_image FROM users ORDER BY id").fetchall()
     conn.close()
-    return render_template("users.html", rows=rows, role_permissions=ROLE_PERMISSIONS, role_labels=ROLE_LABELS)
+    return render_template("users.html", rows=rows, role_permissions=ROLE_PERMISSIONS, role_labels=ROLE_LABELS, now_ts=now())
 
 
 @app.route("/roles")
@@ -3108,10 +3177,14 @@ def edit_user(user_id):
         full_name = request.form["full_name"].strip()
         password = request.form.get("password", "")
         role = request.form.get("role", "STAFF")
+        new_email = request.form.get("email", "").strip().lower()
         try:
             normalized_role = valid_role_name(role)
             if not username or not full_name:
                 raise ValueError("Enter valid user details.")
+            email_message = None
+            if new_email != (row["email"] or ""):
+                email_message = set_recovery_email(conn, user_id, username, new_email)
             if password:
                 policy_error = validate_password(password)
                 if policy_error:
@@ -3127,7 +3200,7 @@ def edit_user(user_id):
                 conn.commit()
             log_action("USER UPDATED", username, f"user_id={user_id}; role={normalized_role}")
             log_action("ADMIN ACTION", username, f"USER UPDATED user_id={user_id}")
-            flash("User updated.", "success")
+            flash("User updated." + (f" {email_message}" if email_message else ""), "success")
             conn.close()
             return redirect(url_for("users"))
         except ValueError as error:
@@ -3309,7 +3382,19 @@ def admin_backup():
     backups = backup_svc.list_backups()
     items = [{"name": p.name, "size": p.stat().st_size,
               "mtime": datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")} for p in backups]
-    return render_template("backup.html", backups=items)
+    for item, path in zip(items, backups):
+        seconds = (datetime.now() - datetime.fromtimestamp(path.stat().st_mtime)).total_seconds()
+        item["kind"] = "safety" if item["name"].startswith("pre_") else "backup"
+        if seconds < 90:
+            item["age"] = "just now"
+        elif seconds < 3600:
+            item["age"] = f"{int(seconds // 60)} min ago"
+        elif seconds < 86400:
+            item["age"] = f"{int(seconds // 3600)} h ago"
+        else:
+            item["age"] = f"{int(seconds // 86400)} d ago"
+    newest = max(items, key=lambda i: i["mtime"]) if items else None
+    return render_template("backup.html", backups=items, total_size=sum(i["size"] for i in items), newest=newest)
 
 
 @app.route("/admin/restore", methods=["POST"])

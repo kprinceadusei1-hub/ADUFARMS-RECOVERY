@@ -26,6 +26,57 @@ document.addEventListener("DOMContentLoaded", function () {
 		loginSubmit.disabled = true;
 		loginSubmit.classList.add("is-loading");
 	});
+	document.querySelectorAll("[data-toggle-for]").forEach(function (button) {
+		const target = document.getElementById(button.dataset.toggleFor);
+		if (!target) return;
+		button.addEventListener("click", function () {
+			const visible = target.type === "text";
+			target.type = visible ? "password" : "text";
+			button.setAttribute("aria-pressed", String(!visible));
+			button.setAttribute("aria-label", visible ? "Show password" : "Hide password");
+			const icon = button.querySelector("i");
+			if (icon) icon.className = visible ? "bi bi-eye" : "bi bi-eye-slash";
+		});
+	});
+	const pwMeter = document.getElementById("pwMeter");
+	if (pwMeter) {
+		const pw = document.getElementById("password");
+		const confirmation = document.getElementById("confirmation");
+		const fill = document.getElementById("pwMeterFill");
+		const text = document.getElementById("pwMeterText");
+		const match = document.getElementById("pwMatch");
+		const labels = ["Very weak", "Weak", "Fair", "Good", "Strong"];
+		const update = function () {
+			const v = pw.value;
+			const checks = {
+				len: v.length >= 12,
+				lower: /[a-z]/.test(v),
+				upper: /[A-Z]/.test(v),
+				digit: /\d/.test(v),
+				symbol: /[^A-Za-z0-9]/.test(v)
+			};
+			let score = 0;
+			Object.keys(checks).forEach(function (key) {
+				const item = document.querySelector('#pwRules [data-rule="' + key + '"]');
+				if (item) item.classList.toggle("ok", checks[key]);
+				if (checks[key]) score += 1;
+			});
+			if (score === 5 && v.length >= 16) score = 5; else if (score === 5) score = 4;
+			fill.style.width = (v ? Math.max(score, 1) * 20 : 0) + "%";
+			fill.dataset.level = String(score);
+			text.textContent = v ? "Strength: " + labels[Math.max(score - 1, 0)] : "Strength: enter a password";
+			if (confirmation.value) {
+				const same = confirmation.value === v;
+				match.hidden = false;
+				match.textContent = same ? "Passwords match" : "Passwords do not match";
+				match.className = "pw-match " + (same ? "ok" : "bad");
+			} else {
+				match.hidden = true;
+			}
+		};
+		pw.addEventListener("input", update);
+		confirmation.addEventListener("input", update);
+	}
 	const capsWarning = document.getElementById("capsWarning");
 	if (capsWarning && passwordInput) {
 		const updateCaps = function (event) {

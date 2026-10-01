@@ -9,6 +9,22 @@
 
 <div class="ops-module ops-module-customers">
 <span id="new" class="anchor-target" aria-hidden="true"></span>
+{% set at_risk0 = (ci.segments|selectattr('key', 'equalto', 'at_risk')|first).count %}
+<div class="um-hero">
+  <div>
+    <span class="eyebrow"><i class="bi bi-people-fill"></i> CUSTOMER DIRECTORY</span>
+    <h2>Customers &amp; credit</h2>
+    <p>Maintain buyer profiles, see who owes you and who needs a call.</p>
+  </div>
+  <a class="btn um-add-btn" href="#new" data-goto-tab="record"><i class="bi bi-person-plus-fill"></i> Add customer</a>
+</div>
+<div class="um-stats">
+  <div class="um-stat"><span class="um-stat-icon um-green"><i class="bi bi-people-fill"></i></span><div><strong>{{ k.total }}</strong><small>Total customers</small></div></div>
+  <div class="um-stat"><span class="um-stat-icon um-teal"><i class="bi bi-check-circle-fill"></i></span><div><strong>{{ k.active90 }}</strong><small>Active (90 days)</small></div></div>
+  <div class="um-stat"><span class="um-stat-icon um-red"><i class="bi bi-hourglass-split"></i></span><div><strong>{{ k.receivables|money }}</strong><small>Owed to you</small></div></div>
+  <div class="um-stat"><span class="um-stat-icon um-gold"><i class="bi bi-telephone-outbound"></i></span><div><strong>{{ at_risk0 }}</strong><small>To call</small></div></div>
+</div>
+
 {% if session.get('role') == 'ADMIN' %}
 <div class="d-flex justify-content-end mb-2">
   <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('deleted_records') }}"><i class="bi bi-archive me-1"></i>Recycle bin</a>
@@ -96,7 +112,7 @@
 
 <!-- ============ DIRECTORY ============ -->
 <section id="tab-directory" class="dx-panel" hidden>
-  <div class="card">
+  <div class="card um-card">
     <div class="card-body">
       <form class="dx-filters" method="get" action="{{ url_for('customers') }}">
         <input type="search" class="form-control form-control-sm" name="q" value="{{ filters.q }}" placeholder="Search name, phone, location...">
@@ -119,7 +135,7 @@
         <span class="{{ 'dx-neg' if rows|sum(attribute='balance') > 0.005 }}"><strong>{{ rows|sum(attribute='balance')|money }}</strong> outstanding</span>
       </div>
       <div class="table-responsive">
-        <table id="customersTable" class="table table-hover align-middle sortable">
+        <table id="customersTable" class="table um-table align-middle sortable">
           <thead>
             <tr>
               <th style="width:48px;" class="text-center">#</th>
@@ -360,4 +376,5 @@
   }
 })();
 </script>
+<script>document.querySelectorAll('[data-goto-tab]').forEach(function(b){b.addEventListener('click',function(e){e.preventDefault();var t=document.querySelector('.dx-tab[data-tab="'+b.getAttribute('data-goto-tab')+'"]');if(t)t.click();});});</script>
 {% endblock %}

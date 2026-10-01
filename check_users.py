@@ -9,7 +9,7 @@ for column in columns:
     print(column)
 
 print("\nUSER ACCOUNTS:")
-users = conn.execute("SELECT * FROM users").fetchall()
+users = conn.execute("SELECT id, username, full_name, role, active, email, email_verified, last_login, created_at FROM users").fetchall()  # never print password hashes
 
 for user in users:
     print(user)

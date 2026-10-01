@@ -10,6 +10,21 @@
 
 <div class="ops-module ops-module-purchases">
 <span id="new" class="anchor-target" aria-hidden="true"></span>
+<div class="um-hero">
+  <div>
+    <span class="eyebrow"><i class="bi bi-box-seam"></i> PURCHASES &amp; INTAKE</span>
+    <h2>Maize purchases</h2>
+    <p>Log what you buy from agents, see the real landed cost per KG and spot losses in transit.</p>
+  </div>
+  <a class="btn um-add-btn" href="#new" data-goto-tab="record"><i class="bi bi-plus-circle"></i> Record purchase</a>
+</div>
+<div class="um-stats">
+  <div class="um-stat"><span class="um-stat-icon um-green"><i class="bi bi-box-seam"></i></span><div><strong>{{ ledger_totals.n }}</strong><small>Purchases (current filter)</small></div></div>
+  <div class="um-stat"><span class="um-stat-icon um-gold"><i class="bi bi-cash-stack"></i></span><div><strong>{{ ledger_totals.spend|money }}</strong><small>Total spend</small></div></div>
+  <div class="um-stat"><span class="um-stat-icon um-teal"><i class="bi bi-basket"></i></span><div><strong>{{ '{:,.0f}'.format(ledger_totals.kg) }} KG</strong><small>Maize received</small></div></div>
+  <div class="um-stat"><span class="um-stat-icon um-grey"><i class="bi bi-tag"></i></span><div><strong>{{ (ledger_totals.spend / ledger_totals.kg)|money if ledger_totals.kg else '—' }}</strong><small>Landed cost per KG</small></div></div>
+</div>
+
 {% if blocked_purchase %}
 <div class="alert alert-warning purchase-delete-warning d-flex align-items-start gap-3" role="alert">
   <i class="bi bi-exclamation-triangle-fill fs-5"></i>
@@ -103,7 +118,7 @@
 
 <!-- ============ LEDGER ============ -->
 <section id="tab-ledger" class="dx-panel" hidden>
-  <div class="card">
+  <div class="card um-card">
     <div class="card-body">
       <form class="dx-filters" method="get" action="{{ url_for('purchases') }}">
         <input type="search" class="form-control form-control-sm" name="q" value="{{ filters.q }}" placeholder="Search ID, supplier, location...">
@@ -124,7 +139,7 @@
         {% if ledger_totals.kg %}<span><strong>{{ (ledger_totals.spend / ledger_totals.kg)|money }}</strong> / KG landed</span>{% endif %}
       </div>
       <div class="table-responsive">
-        <table id="purchaseTable" class="table table-hover table-sm align-middle sortable">
+        <table id="purchaseTable" class="table um-table align-middle sortable">
           <thead>
             <tr>
               <th style="width:48px;" class="text-center">#</th>
@@ -399,4 +414,5 @@
   }
 })();
 </script>
+<script>document.querySelectorAll('[data-goto-tab]').forEach(function(b){b.addEventListener('click',function(e){e.preventDefault();var t=document.querySelector('.dx-tab[data-tab="'+b.getAttribute('data-goto-tab')+'"]');if(t)t.click();});});</script>
 {% endblock %}
