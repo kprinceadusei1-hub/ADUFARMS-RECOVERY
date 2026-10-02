@@ -149,6 +149,7 @@
             <strong>12%</strong>
           </div>
         </div>
+        <div class="text-muted small text-end mt-1"><i class="bi bi-cursor me-1"></i>Click a slice to drill down</div>
       </div>
     </div>
   </div>
@@ -558,12 +559,13 @@ const rawMonthlySales = chartDataEl && chartDataEl.dataset.monthlySales ? JSON.p
 const rawMonthlyPurchases = chartDataEl && chartDataEl.dataset.monthlyPurchases ? JSON.parse(chartDataEl.dataset.monthlyPurchases) : [];
 
 const overviewCanvas = document.getElementById('overviewChart');
+let overviewChart = null;
 if (overviewCanvas) {
   const chartLabels = rawMonthlySales.length ? rawMonthlySales.map(item => item.month) : ['Sep 1', 'Sep 5', 'Sep 10', 'Sep 15', 'Sep 20', 'Sep 25', 'Sep 30'];
   const salesData = rawMonthlySales.length ? rawMonthlySales.map(item => Number(item.revenue || 0)) : [5000, 8000, 6500, 11000, 7500, 9200, 14000];
   const purchaseData = rawMonthlyPurchases.length ? rawMonthlyPurchases.map(item => Number(item.cost || 0)) : [4200, 5800, 7000, 6800, 7600, 9500, 11000];
 
-  new Chart(overviewCanvas, {
+  overviewChart = new Chart(overviewCanvas, {
     type: 'line',
     data: {
       labels: chartLabels,
@@ -595,6 +597,12 @@ if (overviewCanvas) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      onClick: function (evt) {
+        if (!overviewChart) return;
+        const points = overviewChart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
+        if (points.length) openMonthDrill(points[0].index);
+      },
+      onHover: function (evt, elements) { evt.native.target.style.cursor = elements.length ? 'pointer' : ''; },
       plugins: {
         legend: { display: false }
       },
@@ -614,8 +622,9 @@ if (overviewCanvas) {
 }
 
 const productCanvas = document.getElementById('productChart');
+let productChart = null;
 if (productCanvas) {
-  new Chart(productCanvas, {
+  productChart = new Chart(productCanvas, {
     type: 'doughnut',
     data: {
       labels: ['Maize Supply', 'Maize Seeds', 'Animal Feed', 'Other Products'],
@@ -630,12 +639,140 @@ if (productCanvas) {
       responsive: true,
       maintainAspectRatio: false,
       cutout: '72%',
+      onClick: function (evt) {
+        if (!productChart) return;
+        const points = productChart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
+        if (points.length) openProductDrill(points[0].index);
+      },
+      onHover: function (evt, elements) { evt.native.target.style.cursor = elements.length ? 'pointer' : ''; },
       plugins: {
         legend: { display: false }
       }
     }
   });
 }
+
+function drillMoney(value) {
+  return 'GH₵' + Number(value || 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function drillCustomers(rows, valueKey, linkBase) {
+  if (!rows || !rows.length) return '<div class="empty-state"><i class="bi bi-people"></i>No customers yet.</div>';
+  return rows.slice(0, 5).map(function (c, i) {
+    const value = Number(c[valueKey] || 0);
+    const name = (c.name || 'Unknown').replace(/</g, '&lt;');
+    return '<a class="drill-customer" href="' + linkBase + '">'
+      + '<span class="drill-rank">' + (i + 1) + '</span>'
+      + '<span class="drill-customer-name">' + name + '</span>'
+      + '<strong>' + drillMoney(value) + '</strong></a>';
+  }).join('');
+}
+let drillLastFocus = null;
+function openDrill(title, subtitle, kpis, listTitle, listHtml, linkHref, linkLabel) {
+  const overlay = document.getElementById('drillOverlay');
+  if (!overlay) return;
+  drillLastFocus = document.activeElement;
+  document.getElementById('drillTitle').textContent = title;
+  document.getElementById('drillSubtitle').textContent = subtitle;
+  document.getElementById('drillKpis').innerHTML = kpis.map(function (k) {
+    return '<div class="drill-kpi"><span>' + k.label + '</span><strong class="' + (k.tone || '') + '">' + k.value + '</strong></div>';
+  }).join('');
+  document.getElementById('drillListTitle').textContent = listTitle;
+  document.getElementById('drillList').innerHTML = listHtml;
+  const link = document.getElementById('drillLink');
+  link.href = linkHref;
+  link.innerHTML = linkLabel + ' <i class="bi bi-arrow-up-right ms-1"></i>';
+  overlay.hidden = false;
+  requestAnimationFrame(function () { overlay.classList.add('open'); });
+  document.body.style.overflow = 'hidden';
+  document.getElementById('drillClose').focus();
+}
+function closeDrill() {
+  const overlay = document.getElementById('drillOverlay');
+  if (!overlay || overlay.hidden) return;
+  overlay.classList.remove('open');
+  document.body.style.overflow = '';
+  const done = function () {
+    overlay.hidden = true;
+    if (drillLastFocus && drillLastFocus.focus) drillLastFocus.focus();
+  };
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) done();
+  else window.setTimeout(done, 180);
+}
+function openProductDrill(index) {
+  const labels = ['Maize Supply', 'Maize Seeds', 'Animal Feed', 'Other Products'];
+  const shares = [68, 12, 8, 12];
+  const label = labels[index] || 'Product';
+  let customers = [];
+  try { customers = JSON.parse(chartDataEl.dataset.topCustomers || '[]'); } catch (e) { customers = []; }
+  customers = customers.slice().sort(function (a, b) { return Number(b.total_purchases || 0) - Number(a.total_purchases || 0); });
+  openDrill(label, 'Share of sales · ' + (shares[index] || 0) + '% of distribution',
+    [
+      { label: 'Share', value: (shares[index] || 0) + '%' },
+      { label: 'Top buyer volume', value: customers.length ? drillMoney(customers[0].total_purchases) : drillMoney(0) },
+      { label: 'Tracked buyers', value: String(customers.length) }
+    ],
+    'Top customers by purchases',
+    drillCustomers(customers, 'total_purchases', '/customers'),
+    '/customers', 'Open customers');
+}
+function openMonthDrill(index) {
+  const sale = rawMonthlySales[index] || {};
+  const purchase = rawMonthlyPurchases[index] || {};
+  const month = sale.month || purchase.month || 'Period';
+  const revenue = Number(sale.revenue || 0);
+  const cost = Number(purchase.cost || 0);
+  let debtors = [];
+  try { debtors = JSON.parse(chartDataEl.dataset.debtors || '[]'); } catch (e) { debtors = []; }
+  debtors = debtors.slice().sort(function (a, b) {
+    return (Number(b.total_sales || 0) - Number(b.total_paid || 0)) - (Number(a.total_sales || 0) - Number(a.total_paid || 0));
+  });
+  openDrill(month, 'Revenue vs procurement cost',
+    [
+      { label: 'Revenue', value: drillMoney(revenue), tone: 'text-success' },
+      { label: 'Cost', value: drillMoney(cost) },
+      { label: 'Margin', value: drillMoney(revenue - cost), tone: revenue - cost >= 0 ? 'text-success' : 'text-danger' }
+    ],
+    'Top outstanding balances',
+    debtors.length ? debtors.slice(0, 5).map(function (c, i) {
+      const balance = Number(c.total_sales || 0) - Number(c.total_paid || 0);
+      const name = (c.name || 'Unknown').replace(/</g, '&lt;');
+      return '<a class="drill-customer" href="/customers">'
+        + '<span class="drill-rank">' + (i + 1) + '</span>'
+        + '<span class="drill-customer-name">' + name + '</span>'
+        + '<strong>' + drillMoney(balance) + '</strong></a>';
+    }).join('') : '<div class="empty-state"><i class="bi bi-check2-circle"></i>All caught up.</div>',
+    '/reports', 'Open reports');
+}
+document.addEventListener('DOMContentLoaded', function () {
+  document.getElementById('drillClose').addEventListener('click', closeDrill);
+  document.getElementById('drillOverlay').addEventListener('click', function (e) {
+    if (e.target === this) closeDrill();
+  });
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') closeDrill();
+});
 </script>
-<div id="dashboardChartData" data-monthly-sales='{{ monthly_sales|tojson|safe }}' data-monthly-purchases='{{ monthly_purchases|tojson|safe }}' hidden></div>
+<div id="dashboardChartData" data-monthly-sales='{{ monthly_sales|tojson|safe }}' data-monthly-purchases='{{ monthly_purchases|tojson|safe }}' data-top-customers='{{ drill_top_customers|tojson|safe }}' data-debtors='{{ drill_debtors|tojson|safe }}' hidden></div>
+
+<div class="drill-overlay" id="drillOverlay" hidden>
+  <div class="drill-panel" role="dialog" aria-modal="true" aria-labelledby="drillTitle">
+    <div class="drill-header">
+      <div>
+        <span class="eyebrow">DRILL DOWN</span>
+        <h3 id="drillTitle">Details</h3>
+        <p class="text-muted small mb-0" id="drillSubtitle"></p>
+      </div>
+      <button type="button" class="icon-button" id="drillClose" aria-label="Close details"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="drill-kpis" id="drillKpis"></div>
+    <div class="drill-section">
+      <h6 id="drillListTitle">Top customers</h6>
+      <div id="drillList"></div>
+    </div>
+    <div class="drill-footer">
+      <a class="btn btn-sm btn-outline-primary" id="drillLink" href="#">Open full report <i class="bi bi-arrow-up-right ms-1"></i></a>
+    </div>
+  </div>
+</div>
 {% endblock %}

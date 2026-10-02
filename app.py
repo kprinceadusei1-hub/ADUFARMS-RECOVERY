@@ -1568,7 +1568,9 @@ def dashboard():
                            recent_customers=recent_customers,
                            monthly_sales=monthly_sales, monthly_purchases=monthly_purchases,
                            dashboard_images=dashboard_images,
-                           dashboard_image_slots=DASHBOARD_IMAGE_SLOT_ORDER)
+                           dashboard_image_slots=DASHBOARD_IMAGE_SLOT_ORDER,
+                           drill_debtors=[dict(r) for r in outstanding_customers],
+                           drill_top_customers=[dict(r) for r in recent_customers])
 
 
 @app.route("/dashboard/settings")

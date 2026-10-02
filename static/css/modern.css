@@ -1444,3 +1444,23 @@ body.sidebar-collapsed .sidebar-group-list { display:flex; padding-left:0; borde
 #customersTable .badge-customer-type, #customersTable .badge-balance { font-size:.68rem; padding:3px 7px; }
 #customersTable .btn-sm { padding:4px 8px; font-size:.76rem; }
 #customersTable td.text-end { white-space:nowrap; }
+.drill-overlay { position:fixed; inset:0; z-index:1500; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(11,31,22,.45); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); opacity:0; transition:opacity .18s ease-out; }
+.drill-overlay[hidden] { display:none !important; }
+.drill-overlay.open { opacity:1; }
+.drill-panel { width:min(720px,100%); max-height:min(86vh,760px); overflow:auto; border-radius:18px; background:var(--panel); box-shadow:0 24px 60px rgba(0,0,0,.28); transform:translateY(14px) scale(.97); opacity:0; transition:transform .2s ease-out, opacity .18s ease-out; }
+.drill-overlay.open .drill-panel { transform:none; opacity:1; }
+.drill-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:22px 24px 0; }
+.drill-header h3 { margin:2px 0 0; font-family:'Space Grotesk',sans-serif; font-size:1.5rem; font-weight:800; letter-spacing:-.02em; }
+.drill-kpis { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px; padding:16px 24px 0; }
+.drill-kpi { padding:12px 14px; border:1px solid var(--border); border-radius:12px; background:var(--panel-soft); }
+.drill-kpi span { display:block; color:var(--muted-text); font-size:.68rem; font-weight:800; letter-spacing:.07em; text-transform:uppercase; }
+.drill-kpi strong { display:block; margin-top:4px; font-size:1.15rem; font-weight:800; }
+.drill-section { padding:16px 24px 0; }
+.drill-section h6 { color:var(--muted-text); font-size:.72rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+.drill-customer { display:flex; align-items:center; gap:10px; padding:10px 4px; border-bottom:1px solid var(--border); color:var(--text); text-decoration:none; font-size:.9rem; }
+.drill-customer:hover { background:var(--panel-soft); }
+.drill-rank { width:26px; height:26px; flex:0 0 26px; display:grid; place-items:center; border-radius:8px; background:var(--accent-soft); color:#8a6008; font-size:.78rem; font-weight:800; }
+.drill-customer-name { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.drill-footer { padding:16px 24px 22px; }
+@media (max-width:560px) { .drill-kpis { grid-template-columns:1fr 1fr; } .drill-panel { border-radius:14px; } }
+@media (prefers-reduced-motion: reduce) { .drill-overlay, .drill-panel { transition:none; } }
