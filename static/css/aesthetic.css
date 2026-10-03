@@ -167,7 +167,8 @@ body:has(.login-page) {
 .login-card::before { content:""; position:absolute; left:30px; right:30px; top:0; height:4px; border-radius:0 0 8px 8px; background:linear-gradient(90deg,#ce1126 0 33%,#fcd116 33% 66%,#006b3f 66%); }
 .login-card-header { margin-bottom:clamp(14px,3vh,26px); }
 .login-brand-header { gap:clamp(6px,1.4vh,12px); margin-bottom:clamp(8px,1.8vh,16px); }
-.login-brand-mark-mobile { width:clamp(210px,38vh,360px); max-width:100%; border-radius:16px; box-shadow:0 12px 28px -12px rgba(10,48,34,.5); }
+.login-brand-mark-mobile { width:clamp(210px,38vh,360px); max-width:100%; border-radius:0; background:transparent; box-shadow:none; }
+.login-brand-mark-mobile img { border-radius:0; background:transparent; mix-blend-mode:multiply; filter:brightness(1.04) contrast(1.06); }
 .login-card-header .eyebrow { color:var(--forest-700); font-size:.68rem; letter-spacing:.22em; font-weight:800; }
 .login-card-header h2 { font-size:clamp(1.6rem,calc(1rem + 1.6vh + .8vw),2.2rem); letter-spacing:-.025em; color:var(--forest-900); }
 .login-card-header p { color:#41564a; }
