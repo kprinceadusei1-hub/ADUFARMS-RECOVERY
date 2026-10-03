@@ -3435,6 +3435,10 @@ def server_error(error):
 
 if __name__ == "__main__":
     init_db()
+    # Local development: pick up template/CSS edits without restarting the server.
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
+    app.jinja_env.auto_reload = True
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
     app.run(debug=os.environ.get("ADUFARMS_DEBUG", "0") == "1", use_reloader=False,
             host=os.environ.get("ADUFARMS_HOST", "127.0.0.1"),
             port=int(os.environ.get("ADUFARMS_PORT", "5000")))
