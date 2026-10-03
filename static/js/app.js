@@ -75,6 +75,42 @@ document.addEventListener("DOMContentLoaded", function () {
 		body.classList.remove("sidebar-collapsed");
 		try { localStorage.setItem("sidebarCollapsed", "false"); localStorage.setItem("adufarms-sidebar", "expanded"); } catch (e) {}
 	});
+	document.querySelectorAll(".sidebar-group-toggle").forEach(function (toggle) {
+		toggle.addEventListener("click", function () {
+			const list = document.getElementById(toggle.getAttribute("aria-controls"));
+			const open = toggle.getAttribute("aria-expanded") !== "true";
+			document.querySelectorAll(".sidebar-group-toggle").forEach(function (other) {
+				if (other === toggle) return;
+				other.setAttribute("aria-expanded", "false");
+				const otherList = document.getElementById(other.getAttribute("aria-controls"));
+				if (otherList) otherList.hidden = true;
+			});
+			toggle.setAttribute("aria-expanded", open ? "true" : "false");
+			if (list) list.hidden = !open;
+			try {
+				const openGroups = [];
+				document.querySelectorAll(".sidebar-group-toggle[aria-expanded='true']").forEach(function (t) {
+					const grp = t.closest(".sidebar-group");
+					if (grp && grp.dataset.group) openGroups.push(grp.dataset.group);
+				});
+				localStorage.setItem("adufarms-nav-groups", JSON.stringify(openGroups));
+			} catch (e) {}
+		});
+	});
+	try {
+		const savedGroups = JSON.parse(localStorage.getItem("adufarms-nav-groups") || "[]");
+		if (Array.isArray(savedGroups) && savedGroups.length) {
+			document.querySelectorAll(".sidebar-group").forEach(function (grp) {
+				if (savedGroups.indexOf(grp.dataset.group) === -1) return;
+				const toggle = grp.querySelector(".sidebar-group-toggle");
+				const list = grp.querySelector(".sidebar-group-list");
+				if (toggle && list && toggle.getAttribute("aria-expanded") !== "true") {
+					toggle.setAttribute("aria-expanded", "true");
+					list.hidden = false;
+				}
+			});
+		}
+	} catch (e) {}
 	let railTip = null, railTipTimer = null;
 	function hideRailTip() {
 		if (railTipTimer) { window.clearTimeout(railTipTimer); railTipTimer = null; }
@@ -155,9 +191,14 @@ document.addEventListener("DOMContentLoaded", function () {
 		if (!toggle || !panel) return;
 		toggle.addEventListener("click", function (event) {
 			event.stopPropagation();
+			const wasOpen = panel.classList.contains("open");
 			closePopovers();
-			panel.classList.toggle("open");
-			toggle.setAttribute("aria-expanded", panel.classList.contains("open"));
+			if (!wasOpen) {
+				panel.classList.add("open");
+				toggle.setAttribute("aria-expanded", "true");
+			} else {
+				toggle.setAttribute("aria-expanded", "false");
+			}
 		});
 		panel.addEventListener("click", function (event) { event.stopPropagation(); });
 	});

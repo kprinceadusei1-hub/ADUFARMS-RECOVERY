@@ -24,32 +24,84 @@
 
   <div class="sidebar-section-label">Workspace</div>
   <nav class="sidebar-nav" aria-label="Main navigation">
-    {% set nav_items = [('dashboard','Dashboard','speedometer2'),('purchases','Purchases','box-seam'),('customers','Customers & Sales','people'),('stock','Stock & Inventory','boxes'),('payments','Payments','wallet2'),('invoice','Invoices','receipt'),('search','Search','search'),('analytics','Analytics','graph-up-arrow'),('reports','Reports','bar-chart-line'),('assistant','AI Assistant','stars')] %}
-    {% for endpoint, label, icon in nav_items if endpoint != 'analytics' or user_can('view_analytics') %}
-      {% set nav_active = request.endpoint == endpoint or (endpoint == 'customers' and request.endpoint == 'sales') %}
-      {% if endpoint == 'purchases' %}<div class="sidebar-nav-divider" aria-hidden="true"></div>{% endif %}
-      <a class="{% if nav_active %}active{% endif %}" href="{{ url_for(endpoint) }}" data-tip="{{ label }}"{% if nav_active %} aria-current="page"{% endif %} aria-label="{{ label }}">
-        <span class="nav-icon"><i class="bi bi-{{ icon }}" aria-hidden="true"></i></span><span class="nav-label">{{ label }}</span>{% if nav_active %}<span class="nav-active-dot" aria-hidden="true"></span>{% endif %}
-      </a>
+    {% set nav_trade = [('purchases','Purchases','box-seam'),('stock','Stock & Inventory','boxes'),('customers','Customers & Sales','people'),('payments','Payments','wallet2'),('invoice','Invoices','receipt')] %}
+    {% set nav_insights = [('analytics','Analytics','graph-up-arrow'),('reports','Reports','bar-chart-line'),('assistant','AI Assistant','stars'),('search','Search','search')] %}
+    {% set ns = namespace(trade_active=false, insights_active=false) %}
+    {% for endpoint, label, icon in nav_trade %}
+      {% if request.endpoint == endpoint or (endpoint == 'customers' and request.endpoint == 'sales') %}{% set ns.trade_active = true %}{% endif %}
     {% endfor %}
+    {% for endpoint, label, icon in nav_insights if endpoint != 'analytics' or user_can('view_analytics') %}
+      {% if request.endpoint == endpoint %}{% set ns.insights_active = true %}{% endif %}
+    {% endfor %}
+    <a class="{% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}" data-tip="Dashboard"{% if request.endpoint == 'dashboard' %} aria-current="page"{% endif %} aria-label="Dashboard">
+      <span class="nav-icon"><i class="bi bi-speedometer2" aria-hidden="true"></i></span><span class="nav-label">Dashboard</span>{% if request.endpoint == 'dashboard' %}<span class="nav-active-dot" aria-hidden="true"></span>{% endif %}
+    </a>
+    <div class="sidebar-group" data-group="trade">
+      <button class="sidebar-group-toggle{% if ns.trade_active %} active-group{% endif %}" type="button" aria-expanded="{{ 'true' if ns.trade_active else 'false' }}" aria-controls="navGroupTrade" data-tip="Trade">
+        <span class="nav-icon"><i class="bi bi-arrow-left-right" aria-hidden="true"></i></span><span class="nav-label">Trade</span><i class="bi bi-chevron-down group-chevron" aria-hidden="true"></i>
+      </button>
+      <div class="sidebar-group-list" id="navGroupTrade"{% if not ns.trade_active %} hidden{% endif %}>
+        {% for endpoint, label, icon in nav_trade %}
+          {% set nav_active = request.endpoint == endpoint or (endpoint == 'customers' and request.endpoint == 'sales') %}
+          <a class="{% if nav_active %}active{% endif %}" href="{{ url_for(endpoint) }}" data-tip="{{ label }}"{% if nav_active %} aria-current="page"{% endif %} aria-label="{{ label }}">
+            <span class="nav-icon"><i class="bi bi-{{ icon }}" aria-hidden="true"></i></span><span class="nav-label">{{ label }}</span>{% if nav_active %}<span class="nav-active-dot" aria-hidden="true"></span>{% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="sidebar-group" data-group="insights">
+      <button class="sidebar-group-toggle{% if ns.insights_active %} active-group{% endif %}" type="button" aria-expanded="{{ 'true' if ns.insights_active else 'false' }}" aria-controls="navGroupInsights" data-tip="Insights">
+        <span class="nav-icon"><i class="bi bi-graph-up-arrow" aria-hidden="true"></i></span><span class="nav-label">Insights</span><i class="bi bi-chevron-down group-chevron" aria-hidden="true"></i>
+      </button>
+      <div class="sidebar-group-list" id="navGroupInsights"{% if not ns.insights_active %} hidden{% endif %}>
+        {% for endpoint, label, icon in nav_insights if endpoint != 'analytics' or user_can('view_analytics') %}
+          {% set nav_active = request.endpoint == endpoint %}
+          <a class="{% if nav_active %}active{% endif %}" href="{{ url_for(endpoint) }}" data-tip="{{ label }}"{% if nav_active %} aria-current="page"{% endif %} aria-label="{{ label }}">
+            <span class="nav-icon"><i class="bi bi-{{ icon }}" aria-hidden="true"></i></span><span class="nav-label">{{ label }}</span>{% if nav_active %}<span class="nav-active-dot" aria-hidden="true"></span>{% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
   </nav>
 
   {% if (session.get('role') or '')|upper == 'ADMIN' %}
     <div class="sidebar-section-label administration-label">Administration</div>
     <nav class="sidebar-nav" aria-label="Administration navigation">
-      {% set admin_items = [('users','Users','people','users'),('dashboard_settings','Dashboard Settings','image','dashboard-settings'),('admin_backup','Backup & Restore','database-down','backup'),('deleted_records','Recycle Bin','archive','recycle'),('profile','System Settings','sliders2','settings'),('audit_logs','Audit Log','shield-check','audit')] %}
-      {% for endpoint, label, icon, anchor in admin_items %}
-        {% set admin_active = (anchor == 'users' and request.endpoint == 'users') or (anchor == 'dashboard-settings' and request.endpoint == 'dashboard_settings') or (anchor == 'audit' and request.endpoint == 'audit_logs') or (anchor == 'backup' and request.endpoint == 'admin_backup') or (anchor == 'recycle' and request.endpoint == 'deleted_records') or (anchor == 'settings' and request.endpoint == 'profile') %}
-        {% if anchor == 'dashboard-settings' %}
-          {% set admin_url = url_for('dashboard_settings') %}
-        {% elif anchor == 'settings' %}
-          {% set admin_url = url_for('profile') ~ '#security' %}
-        {% else %}
-          {% set admin_url = url_for(endpoint) %}
-        {% endif %}
-        <a class="{% if admin_active %}active{% endif %}" href="{{ admin_url }}" data-tip="{{ label }}"{% if admin_active %} aria-current="page"{% endif %} aria-label="{{ label }}">
-          <span class="nav-icon"><i class="bi bi-{{ icon }}" aria-hidden="true"></i></span><span class="nav-label">{{ label }}</span>{% if admin_active %}<span class="nav-active-dot" aria-hidden="true"></span>{% endif %}
-        </a>
+      {% set admin_team = [('users','Users','people','users')] %}
+      {% set admin_system = [('dashboard_settings','Dashboard Settings','image','dashboard-settings'),('profile','System Settings','sliders2','settings'),('admin_backup','Backup & Restore','database-down','backup')] %}
+      {% set admin_records = [('deleted_records','Recycle Bin','archive','recycle'),('audit_logs','Audit Log','shield-check','audit')] %}
+      {% set adm = namespace(team_active=false, system_active=false, records_active=false) %}
+      {% for endpoint, label, icon, anchor in admin_team %}
+        {% if anchor == 'users' and request.endpoint == 'users' %}{% set adm.team_active = true %}{% endif %}
+      {% endfor %}
+      {% for endpoint, label, icon, anchor in admin_system %}
+        {% if (anchor == 'dashboard-settings' and request.endpoint == 'dashboard_settings') or (anchor == 'backup' and request.endpoint == 'admin_backup') or (anchor == 'settings' and request.endpoint == 'profile') %}{% set adm.system_active = true %}{% endif %}
+      {% endfor %}
+      {% for endpoint, label, icon, anchor in admin_records %}
+        {% if (anchor == 'audit' and request.endpoint == 'audit_logs') or (anchor == 'recycle' and request.endpoint == 'deleted_records') %}{% set adm.records_active = true %}{% endif %}
+      {% endfor %}
+      {% set admin_groups = [('team','Team','people',admin_team,adm.team_active),('system','System','sliders2',admin_system,adm.system_active),('records','Records','archive',admin_records,adm.records_active)] %}
+      {% for group_key, group_label, group_icon, items, group_active in admin_groups %}
+      <div class="sidebar-group" data-group="admin-{{ group_key }}">
+        <button class="sidebar-group-toggle{% if group_active %} active-group{% endif %}" type="button" aria-expanded="{{ 'true' if group_active else 'false' }}" aria-controls="navGroupAdmin{{ group_key|capitalize }}" data-tip="{{ group_label }}">
+          <span class="nav-icon"><i class="bi bi-{{ group_icon }}" aria-hidden="true"></i></span><span class="nav-label">{{ group_label }}</span><i class="bi bi-chevron-down group-chevron" aria-hidden="true"></i>
+        </button>
+        <div class="sidebar-group-list" id="navGroupAdmin{{ group_key|capitalize }}"{% if not group_active %} hidden{% endif %}>
+          {% for endpoint, label, icon, anchor in items %}
+            {% set admin_active = (anchor == 'users' and request.endpoint == 'users') or (anchor == 'dashboard-settings' and request.endpoint == 'dashboard_settings') or (anchor == 'audit' and request.endpoint == 'audit_logs') or (anchor == 'backup' and request.endpoint == 'admin_backup') or (anchor == 'recycle' and request.endpoint == 'deleted_records') or (anchor == 'settings' and request.endpoint == 'profile') %}
+            {% if anchor == 'dashboard-settings' %}
+              {% set admin_url = url_for('dashboard_settings') %}
+            {% elif anchor == 'settings' %}
+              {% set admin_url = url_for('profile') ~ '#security' %}
+            {% else %}
+              {% set admin_url = url_for(endpoint) %}
+            {% endif %}
+            <a class="{% if admin_active %}active{% endif %}" href="{{ admin_url }}" data-tip="{{ label }}"{% if admin_active %} aria-current="page"{% endif %} aria-label="{{ label }}">
+              <span class="nav-icon"><i class="bi bi-{{ icon }}" aria-hidden="true"></i></span><span class="nav-label">{{ label }}</span>{% if admin_active %}<span class="nav-active-dot" aria-hidden="true"></span>{% endif %}
+            </a>
+          {% endfor %}
+        </div>
+      </div>
       {% endfor %}
     </nav>
   {% endif %}
