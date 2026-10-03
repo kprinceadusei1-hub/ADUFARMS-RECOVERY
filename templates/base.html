@@ -14,7 +14,7 @@
 {% if request.endpoint == 'invoice' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/invoice.css') }}">
 {% endif %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/aesthetic.css', v='aes-10') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/aesthetic.css', v='aes-12') }}">
 </head>
 <body data-theme="light" class="{% if session.get('user_id') %}authenticated{% endif %} page-{{ request.endpoint or 'public' }}{% if request.endpoint == 'invoice' and (request.args.get('print') in ['1','true','yes'] or request.path.endswith('/print')) %} invoice-print-view{% endif %}">
 <script>try{var s=localStorage.getItem("sidebarCollapsed")||localStorage.getItem("adufarms-sidebar");if((s==="true"||s==="collapsed")&&window.matchMedia("(min-width: 901px)").matches){document.body.classList.add("sidebar-collapsed");}}catch(e){}</script>

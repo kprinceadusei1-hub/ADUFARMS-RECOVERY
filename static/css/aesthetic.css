@@ -201,3 +201,57 @@ body:has(.login-page) {
   .login-security { display:flex; }
 }
 @media (prefers-reduced-motion:reduce) { .login-visual::before { animation:none; } .login-submit::after { display:none; } }
+
+/* ===================== Sign-in: smart details ===================== */
+.login-message h1 em { font-style:normal; background:linear-gradient(100deg,#ffe08a 0%,#f2b72d 55%,#ffcf5c 100%); -webkit-background-clip:text; background-clip:text; color:transparent; text-shadow:none; filter:drop-shadow(0 3px 18px rgba(0,0,0,.35)); }
+
+/* Photo parallax (driven by static/js/login.js) with room to move */
+.login-visual::before { inset:-26px; translate:var(--px,0px) var(--py,0px); transition:translate .5s var(--ease-out); }
+
+/* Drifting maize kernels */
+.login-kernels { position:absolute; inset:0; z-index:1; overflow:hidden; pointer-events:none; }
+.login-kernels span {
+  position:absolute; bottom:-24px; left:var(--x); width:var(--s); height:calc(var(--s) * 1.35);
+  border-radius:50% 50% 50% 50% / 62% 62% 38% 38%;
+  background:radial-gradient(circle at 35% 30%, #fff4c2 0%, #f6c445 45%, #d99a10 100%);
+  box-shadow:0 0 14px rgba(246,196,69,.55); opacity:0;
+  animation:lx-kernel var(--d) linear var(--delay) infinite;
+}
+.login-kernels span:nth-child(1)  { --x:6%;  --s:7px;  --d:19s; --delay:0s; }
+.login-kernels span:nth-child(2)  { --x:16%; --s:11px; --d:25s; --delay:4s; }
+.login-kernels span:nth-child(3)  { --x:27%; --s:6px;  --d:21s; --delay:9s; }
+.login-kernels span:nth-child(4)  { --x:38%; --s:9px;  --d:27s; --delay:2s; }
+.login-kernels span:nth-child(5)  { --x:49%; --s:7px;  --d:23s; --delay:12s; }
+.login-kernels span:nth-child(6)  { --x:59%; --s:12px; --d:29s; --delay:6s; }
+.login-kernels span:nth-child(7)  { --x:69%; --s:6px;  --d:20s; --delay:15s; }
+.login-kernels span:nth-child(8)  { --x:79%; --s:9px;  --d:26s; --delay:1s; }
+.login-kernels span:nth-child(9)  { --x:88%; --s:7px;  --d:22s; --delay:8s; }
+.login-kernels span:nth-child(10) { --x:94%; --s:10px; --d:28s; --delay:13s; }
+@keyframes lx-kernel {
+  0%   { transform:translate3d(0,0,0) rotate(0deg); opacity:0; }
+  10%  { opacity:.75; }
+  85%  { opacity:.55; }
+  100% { transform:translate3d(30px,-105vh,0) rotate(220deg); opacity:0; }
+}
+
+/* Caps Lock hint */
+.login-caps { display:flex; align-items:center; gap:7px; margin-top:8px; padding:7px 11px; border-radius:10px; background:#fff6dc; border:1px solid #f1d58a; color:#7a5200; font-size:.76rem; font-weight:700; animation:lx-rise .25s var(--ease-out) both; }
+.login-caps[hidden] { display:none; }
+
+/* Trust badges replace the single security line */
+.login-trust { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin:clamp(12px,2.2vh,20px) 0 0; padding:0; list-style:none; }
+.login-trust li { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:999px; background:#eef6f0; border:1px solid #d6e6db; color:var(--forest-800); font-size:.72rem; font-weight:700; letter-spacing:.01em; }
+.login-trust i { color:var(--emerald); }
+
+/* A failed sign-in gets a short shake */
+.login-alert { animation:lx-shake .5s cubic-bezier(.36,.07,.19,.97) both; }
+@keyframes lx-shake { 10%,90% { transform:translateX(-1px); } 20%,80% { transform:translateX(3px); } 30%,50%,70% { transform:translateX(-5px); } 40%,60% { transform:translateX(5px); } }
+
+@media (max-height:620px) { .login-trust { display:none; } }
+@media (max-width:700px) { .login-trust { display:flex; } }
+@media (prefers-reduced-motion:reduce) { .login-kernels, .login-alert { animation:none; } .login-kernels span { animation:none; opacity:0; } .login-visual::before { transition:none; } }
+
+/* Safety nets for very short windows */
+#loginGreeting { text-transform:uppercase; }
+.login-panel { overflow-y:auto; overflow-x:hidden; scrollbar-width:thin; }
+.login-card:has(.login-alert) .login-trust { display:none; }
