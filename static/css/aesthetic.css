@@ -255,3 +255,12 @@ body:has(.login-page) {
 #loginGreeting { text-transform:uppercase; }
 .login-panel { overflow-y:auto; overflow-x:hidden; scrollbar-width:thin; }
 .login-card:has(.login-alert) .login-trust { display:none; }
+
+/* Lighter photo: let the farm glow, keep only a soft shade behind the text */
+.login-visual-overlay { background:
+  radial-gradient(700px 420px at 0% 0%, rgba(242,183,45,.20), transparent 62%),
+  linear-gradient(180deg, rgba(6,35,26,.10) 0%, rgba(6,35,26,0) 30%, rgba(6,35,26,.16) 56%, rgba(6,35,26,.62) 100%),
+  linear-gradient(100deg, rgba(6,35,26,.22) 0%, rgba(6,35,26,0) 70%); }
+.login-message h1, .login-message p { text-shadow:0 2px 22px rgba(0,0,0,.55), 0 1px 3px rgba(0,0,0,.45); }
+.login-message .eyebrow { background:rgba(6,35,26,.38); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+.login-visual-footer span { background:rgba(6,35,26,.34); border-color:rgba(255,255,255,.30); }
