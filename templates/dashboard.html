@@ -6,6 +6,7 @@
 {{ stat(tone, icon, label, value, note, delta, good_up, spark) }}
 {%- endmacro %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='dx-1') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard-fx.css', v='fx-2') }}">
 
 
 
@@ -16,6 +17,7 @@
       <span class="dx-eyebrow"><i class="bi bi-calendar3"></i> {{ d.period_text }}{% if d.compare_text %} <em>· {{ d.compare_text }}</em>{% endif %}</span>
       <h2><span id="dxGreeting">Welcome back</span>, {{ session.get('full_name') or session.get('username') or '' }}</h2>
       <p>Here is how ADUFARMS is performing{% if d.range_key != 'all' %} over the {{ d.period_label|lower }}{% endif %}.</p>
+      <span class="dx-live"><span class="dx-live-dot"></span><span id="dxClock">Live</span></span>
     </div>
     <div class="dx-header-actions">
       <div class="dx-range" role="tablist" aria-label="Reporting period">
@@ -29,6 +31,12 @@
         {% if can.create_purchases %}<a class="dx-btn" href="{{ url_for('purchases') }}"><i class="bi bi-box-seam"></i> New purchase</a>{% endif %}
         {% if can.create_customers %}<a class="dx-btn" href="{{ url_for('customers') }}#new"><i class="bi bi-person-plus"></i> Add customer</a>{% endif %}
       </div>
+    </div>
+    <div class="dx-hero-strip">
+      {% if can.sales %}<div class="dx-hero-stat"><small>Sales made</small><strong>{{ d.totals.count }}</strong><em>{{ '{:,.0f}'.format(d.totals.kg) }} KG sold</em></div>{% endif %}
+      {% if can.inventory %}<div class="dx-hero-stat"><small>Stock on hand</small><strong>{{ '{:,.0f}'.format(d.stock.available_kg) }} KG</strong><em>{{ 'Depleted' if d.stock.available_kg <= 0 else 'Low stock' if d.stock.low else 'Healthy' }}</em></div>{% endif %}
+      {% if can.payments %}<div class="dx-hero-stat"><small>Collection rate</small><strong>{{ ('%.0f%%'|format(d.receivables.collection_rate * 100)) if d.receivables.collection_rate is not none else '—' }}</strong><em>of billed sales</em></div>{% endif %}
+      {% if can.payments %}<div class="dx-hero-stat"><small>Outstanding</small><strong>{{ d.receivables.total|money }}</strong><em>{{ d.debtors|length }} debtor{{ '' if d.debtors|length == 1 else 's' }}</em></div>{% endif %}
     </div>
   </section>
 
@@ -185,10 +193,17 @@
       {% if can.inventory %}
       <div class="dx-card">
         <div class="dx-card-head"><h3><i class="bi bi-boxes"></i> Stock position</h3><a class="dx-link" href="{{ url_for('stock') }}">Details</a></div>
+        {% set gtone = 'bad' if d.stock.available_kg <= 0 else 'warn' if d.stock.low else 'ok' %}
         <div class="dx-stock">
-          <div class="dx-stock-figure">{{ '{:,.0f}'.format(d.stock.available_kg) }}<small> KG</small></div>
-          <span class="dx-pill {{ 'dx-pill-bad' if d.stock.available_kg <= 0 else 'dx-pill-warn' if d.stock.low else 'dx-pill-good' }}">
-            {{ 'Depleted' if d.stock.available_kg <= 0 else 'Low stock' if d.stock.low else 'Healthy' }}</span>
+          <div class="dx-stock-main">
+            <div class="dx-stock-figure">{{ '{:,.0f}'.format(d.stock.available_kg) }}<small> KG</small></div>
+            <span class="dx-pill {{ 'dx-pill-bad' if d.stock.available_kg <= 0 else 'dx-pill-warn' if d.stock.low else 'dx-pill-good' }}">
+              {{ 'Depleted' if d.stock.available_kg <= 0 else 'Low stock' if d.stock.low else 'Healthy' }}</span>
+          </div>
+          <div class="dx-gauge-wrap" role="img" aria-label="Stock cover {{ d.stock.cover_pct|round(0)|int }} percent of a 30 day target">
+            <div class="dx-gauge dx-gauge-{{ gtone }}" data-p="{{ d.stock.cover_pct|round(1) }}"></div>
+            <div class="dx-gauge-label"><strong>{{ d.stock.cover_pct|round(0)|int }}%</strong><small>30-day cover</small></div>
+          </div>
         </div>
         <div class="dx-meter" role="img" aria-label="Days of stock cover"><span style="width:{{ d.stock.cover_pct|round(0)|int }}%" class="{{ 'bad' if d.stock.available_kg <= 0 or d.stock.low else 'ok' }}"></span></div>
         <dl class="dx-facts">
@@ -265,6 +280,31 @@
     svg.innerHTML = '<polygon points="0,28 ' + line + ' 96,28" class="dx-spark-fill"/><polyline points="' + line + '" class="dx-spark-line"/>';
   });
 
+  const clock = document.getElementById('dxClock');
+  if (clock) {
+    const tick = () => { clock.textContent = new Date().toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }); };
+    tick(); setInterval(tick, 1000);
+  }
+
+  document.querySelectorAll('.dx-dash .dx-card, .dx-dash .dx-hero-stat, .dx-dash .dx-kpi').forEach((el, i) => el.style.setProperty('--i', Math.min(i, 14)));
+
+  document.querySelectorAll('.dx-dash .dx-kpi').forEach(card => {
+    card.addEventListener('pointermove', e => {
+      const r = card.getBoundingClientRect();
+      card.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+      card.style.setProperty('--my', (e.clientY - r.top) + 'px');
+    });
+    card.addEventListener('pointerleave', () => { card.style.removeProperty('--mx'); card.style.removeProperty('--my'); });
+  });
+
+  document.querySelectorAll('.dx-gauge').forEach(g => {
+    const target = Math.max(0, Math.min(100, parseFloat(g.dataset.p) || 0));
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { g.style.setProperty('--p', target); return; }
+    const t0 = performance.now();
+    const step = now => { const k = Math.min(1, (now - t0) / 1100); g.style.setProperty('--p', target * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
+
   const data = JSON.parse(document.getElementById('dxData').textContent);
   const dark = () => document.body.dataset.theme === 'dark';
   const ink = () => dark() ? '#c9dccf' : '#52665b';
@@ -278,7 +318,7 @@
   if (trendCanvas) {
     const datasets = [];
     if (data.showSales) datasets.push({ type: 'bar', label: 'Sales', data: data.series.revenue, backgroundColor: (ctx) => { const a = ctx.chart.chartArea; if (!a) return '#16a34a'; const g = ctx.chart.ctx.createLinearGradient(0, a.top, 0, a.bottom); g.addColorStop(0, '#16a34a'); g.addColorStop(1, 'rgba(22,163,74,0.6)'); return g; }, borderRadius: 6, borderSkipped: false, maxBarThickness: 28, order: 3 });
-    if (data.showCollections) datasets.push({ label: 'Collected', data: data.series.collected, type: 'line', borderColor: '#2563eb', backgroundColor: '#2563eb', tension: 0.3, borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 6, order: 1 });
+    if (data.showCollections) datasets.push({ label: 'Collected', data: data.series.collected, type: 'line', borderColor: '#2563eb', backgroundColor: (ctx) => { const a = ctx.chart.chartArea; if (!a) return 'rgba(37,99,235,0.1)'; const g = ctx.chart.ctx.createLinearGradient(0, a.top, 0, a.bottom); g.addColorStop(0, 'rgba(37,99,235,0.28)'); g.addColorStop(1, 'rgba(37,99,235,0)'); return g; }, fill: true, tension: 0.4, borderWidth: 3, pointRadius: 0, pointHoverRadius: 7, pointHoverBackgroundColor: '#fff', pointHoverBorderWidth: 3, order: 1 });
     if (data.showPurchases) datasets.push({ label: 'Purchases', data: data.series.purchases, type: 'line', borderColor: 'rgba(217,119,6,0.75)', borderDash: [6, 4], tension: 0.3, borderWidth: 1.75, pointRadius: 0, pointHoverRadius: 5, order: 2 });
     trend = new Chart(trendCanvas, {
       type: 'bar',

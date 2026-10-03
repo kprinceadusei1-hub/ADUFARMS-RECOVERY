@@ -1,0 +1,225 @@
+/* ADUFARMS executive dashboard - visual layer ("fx"). Scoped to .dx-dash so analytics/reports pages are untouched.
+   Loads after dashboard.css; pure presentation, no data logic. */
+
+.dx-dash {
+  --fx-glow: 0 0 0 1px color-mix(in srgb, var(--tone, var(--dx-green)) 35%, transparent),
+             0 18px 40px -12px color-mix(in srgb, var(--tone, var(--dx-green)) 45%, transparent);
+  gap: 22px;
+}
+
+/* ---------- Hero ---------- */
+.dx-dash .dx-header {
+  isolation: isolate;
+  padding: 34px 36px 42px;
+  border-radius: 24px;
+  box-shadow: 0 24px 60px -20px rgba(6, 30, 18, .55), inset 0 1px 0 rgba(255, 255, 255, .12);
+}
+.dx-dash .dx-header::before {            /* drifting aurora */
+  content: ""; position: absolute; inset: -40%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(380px 280px at 18% 30%, rgba(52, 165, 99, .38), transparent 70%),
+    radial-gradient(420px 300px at 78% 20%, rgba(245, 185, 58, .30), transparent 70%),
+    radial-gradient(360px 260px at 60% 90%, rgba(37, 99, 235, .22), transparent 70%);
+  filter: blur(30px);
+  animation: fxAurora 18s ease-in-out infinite alternate;
+}
+@keyframes fxAurora {
+  from { transform: translate3d(-4%, -2%, 0) rotate(0deg) scale(1); }
+  to   { transform: translate3d(5%, 4%, 0) rotate(8deg) scale(1.12); }
+}
+.dx-dash .dx-header h2 {
+  background: linear-gradient(100deg, #fff 30%, #ffe9a8 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  text-shadow: none; filter: drop-shadow(0 2px 14px rgba(0, 0, 0, .35));
+}
+.dx-dash .dx-eyebrow {
+  background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .18);
+  backdrop-filter: blur(8px);
+}
+.dx-live {                                  /* live clock chip */
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 14px;
+  padding: 6px 14px; border-radius: 999px; font-size: .8rem; font-weight: 700; color: #e7f5ec;
+  background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .16); backdrop-filter: blur(8px);
+  font-variant-numeric: tabular-nums;
+}
+.dx-live-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #4ade80;
+  box-shadow: 0 0 0 0 rgba(74, 222, 128, .7); animation: fxPing 2s ease-out infinite;
+}
+@keyframes fxPing { 70% { box-shadow: 0 0 0 9px rgba(74, 222, 128, 0); } 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); } }
+
+.dx-dash .dx-range { background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .16); backdrop-filter: blur(10px); }
+.dx-dash .dx-range a { transition: background .2s, color .2s, transform .2s; }
+.dx-dash .dx-range a.active { background: linear-gradient(135deg, #fff, #f1f8f3); }
+.dx-dash .dx-header .dx-btn { backdrop-filter: blur(8px); }
+.dx-dash .dx-header .dx-btn-primary { box-shadow: 0 8px 22px -6px rgba(245, 185, 58, .65); }
+
+/* Glass stat strip inside the hero */
+.dx-hero-strip {
+  flex: 1 0 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 4px;
+}
+.dx-hero-stat {
+  position: relative; padding: 12px 16px; border-radius: 16px; color: #fff;
+  background: linear-gradient(135deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, .05));
+  border: 1px solid rgba(255, 255, 255, .16); backdrop-filter: blur(12px);
+  transition: transform .25s var(--p-ease, ease), background .25s;
+}
+.dx-hero-stat:hover { transform: translateY(-2px); background: linear-gradient(135deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .07)); }
+.dx-hero-stat small { display: block; font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: rgba(255, 255, 255, .68); }
+.dx-hero-stat strong { display: block; margin-top: 3px; font-size: 1.2rem; font-weight: 800; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.dx-hero-stat em { font-style: normal; font-size: .72rem; font-weight: 700; color: #ffe9a8; }
+
+/* ---------- KPI cards ---------- */
+.dx-dash .dx-kpi {
+  --mx: 50%; --my: 0%;
+  border-radius: 22px; border: 1px solid color-mix(in srgb, var(--tone) 20%, var(--dx-line));
+  background:
+    radial-gradient(260px 160px at var(--mx) var(--my), color-mix(in srgb, var(--tone) 16%, transparent), transparent 70%),
+    linear-gradient(145deg, color-mix(in srgb, var(--tone) 9%, var(--dx-card)) 0%, var(--dx-card) 60%);
+  transition: transform .3s var(--p-ease, ease), box-shadow .3s, border-color .3s;
+}
+.dx-dash .dx-kpi::before {                    /* replace edge bar with a soft tone halo */
+  inset: auto -30px -50px auto; width: 130px; height: 130px; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--tone) 26%, transparent), transparent 70%); pointer-events: none;
+}
+.dx-dash .dx-kpi:hover { transform: translateY(-5px) scale(1.01); box-shadow: var(--fx-glow); border-color: color-mix(in srgb, var(--tone) 50%, var(--dx-line)); }
+.dx-dash .dx-kpi-icon {
+  width: 44px; height: 44px; border-radius: 14px; color: #fff;
+  background: linear-gradient(135deg, var(--tone), color-mix(in srgb, var(--tone) 55%, #000));
+  box-shadow: 0 8px 18px -6px color-mix(in srgb, var(--tone) 70%, transparent);
+}
+.dx-dash .dx-kpi-value {
+  background: linear-gradient(120deg, var(--dx-ink) 40%, color-mix(in srgb, var(--tone) 70%, var(--dx-ink)));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.dx-dash .dx-spark-line { filter: drop-shadow(0 3px 5px color-mix(in srgb, var(--tone) 55%, transparent)); }
+.dx-dash .dx-spark-fill { fill: color-mix(in srgb, var(--tone) 20%, transparent); }
+.dx-dash .dx-chip { backdrop-filter: blur(4px); }
+
+/* ---------- Cards ---------- */
+.dx-dash .dx-card {
+  border-radius: 22px; position: relative;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--dx-green) 3.5%, var(--dx-card)), var(--dx-card) 120px);
+  transition: transform .3s var(--p-ease, ease), box-shadow .3s, border-color .3s;
+}
+.dx-dash .dx-card:hover { box-shadow: 0 20px 44px -22px rgba(12, 46, 29, .35); border-color: color-mix(in srgb, var(--dx-green) 30%, var(--dx-line)); }
+.dx-dash .dx-card-head h3 i {
+  color: #fff; background: linear-gradient(135deg, #25884f, #145533);
+  box-shadow: 0 6px 14px -5px rgba(20, 85, 51, .6);
+}
+.dx-dash .dx-link {
+  padding: 4px 12px; border-radius: 999px; background: color-mix(in srgb, var(--dx-blue) 10%, transparent); transition: background .2s;
+}
+.dx-dash .dx-link:hover { background: color-mix(in srgb, var(--dx-blue) 18%, transparent); text-decoration: none; }
+
+/* Insights */
+.dx-dash .dx-insight {
+  position: relative; overflow: hidden; border-radius: 14px; transition: transform .2s, box-shadow .2s;
+  background: linear-gradient(110deg, color-mix(in srgb, var(--c) 13%, transparent), color-mix(in srgb, var(--c) 3%, transparent));
+}
+.dx-dash .dx-insight::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--c); }
+.dx-dash .dx-insight:hover { transform: translateX(3px); }
+.dx-dash .dx-insight-icon { border-radius: 10px; box-shadow: 0 6px 14px -5px color-mix(in srgb, var(--c) 80%, transparent); }
+
+/* Ageing stack */
+.dx-dash .dx-stack { height: 16px; box-shadow: inset 0 1px 3px rgba(0, 0, 0, .12); }
+.dx-dash .dx-stack span { transform-origin: left; animation: fxGrow .9s var(--p-ease, ease) both; }
+@keyframes fxGrow { from { transform: scaleX(0); } }
+
+/* Top customers - medal rank */
+.dx-dash .dx-bars { counter-reset: rank; }
+.dx-dash .dx-bars li { position: relative; padding-left: 38px; counter-increment: rank; }
+.dx-dash .dx-bars li::before {
+  content: counter(rank); position: absolute; left: 0; top: 0; width: 28px; height: 28px; display: grid; place-items: center;
+  border-radius: 50%; font-size: .78rem; font-weight: 800; color: var(--dx-muted); background: var(--dx-soft); border: 1px solid var(--dx-line);
+}
+.dx-dash .dx-bars li:nth-child(1)::before { color: #5a3b00; background: linear-gradient(135deg, #ffe08a, #e0a012); border-color: transparent; box-shadow: 0 4px 10px -2px rgba(224, 160, 18, .6); }
+.dx-dash .dx-bars li:nth-child(2)::before { color: #2d3748; background: linear-gradient(135deg, #f1f5f9, #b8c4d0); border-color: transparent; }
+.dx-dash .dx-bars li:nth-child(3)::before { color: #fff; background: linear-gradient(135deg, #e0a070, #a3623a); border-color: transparent; }
+.dx-dash .dx-bar { height: 9px; }
+.dx-dash .dx-bar span { transform-origin: left; animation: fxGrow 1s var(--p-ease, ease) both; box-shadow: 0 0 12px rgba(74, 222, 128, .55); }
+
+/* Stock gauge */
+.dx-gauge {
+  --p: 0; --c: var(--dx-green); position: relative; width: 132px; height: 132px; flex: 0 0 auto; border-radius: 50%;
+  display: grid; place-items: center;
+  background: conic-gradient(from 220deg, var(--c) calc(var(--p) * 2.7deg), var(--dx-soft) 0 270deg, transparent 0);
+  -webkit-mask: radial-gradient(circle, transparent 54%, #000 55%); mask: radial-gradient(circle, transparent 54%, #000 55%);
+  filter: drop-shadow(0 6px 14px color-mix(in srgb, var(--c) 40%, transparent));
+}
+.dx-gauge-wrap { position: relative; display: grid; place-items: center; width: 132px; height: 132px; flex: 0 0 auto; }
+.dx-gauge-wrap .dx-gauge { position: absolute; inset: 0; }
+.dx-gauge-label { position: relative; text-align: center; line-height: 1.1; }
+.dx-gauge-label strong { display: block; font-size: 1.5rem; font-weight: 800; letter-spacing: -.02em; }
+.dx-gauge-label small { font-size: .66rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--dx-muted); }
+.dx-gauge-warn { --c: var(--dx-gold); } .dx-gauge-bad { --c: var(--dx-red); }
+.dx-dash .dx-stock { align-items: center; gap: 18px; flex-wrap: wrap; }
+.dx-dash .dx-stock-main { flex: 1 1 140px; min-width: 0; }
+.dx-dash .dx-stock-figure { font-size: 2.2rem; background: linear-gradient(120deg, var(--dx-ink), var(--dx-green)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.dx-dash .dx-stock-figure small { -webkit-text-fill-color: var(--dx-muted); }
+.dx-dash .dx-meter { display: none; }       /* the gauge replaces the flat meter */
+.dx-dash .dx-facts { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--dx-line); }
+
+/* Activity feed - timeline */
+.dx-dash .dx-feed { position: relative; gap: 14px; }
+.dx-dash .dx-feed::before { content: ""; position: absolute; left: 4.5px; top: 8px; bottom: 8px; width: 2px; background: linear-gradient(var(--dx-line), transparent); }
+.dx-dash .dx-dot { position: relative; box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 0%, transparent), 0 0 12px currentColor; }
+.dx-dash .dx-dot-sale { color: var(--dx-green); } .dx-dash .dx-dot-payment { color: var(--dx-blue); } .dx-dash .dx-dot-purchase { color: var(--dx-gold); }
+
+/* Tables */
+.dx-dash .dx-table th { background: var(--dx-soft); }
+.dx-dash .dx-table th:first-child { border-radius: 10px 0 0 10px; } .dx-dash .dx-table th:last-child { border-radius: 0 10px 10px 0; }
+.dx-dash .dx-table tbody tr { transition: background .15s, transform .15s; }
+.dx-dash .dx-table tbody tr:hover { background: color-mix(in srgb, var(--dx-green) 7%, transparent); }
+.dx-dash .dx-pill { box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 25%, transparent); }
+
+/* Entrance: staggered via --i set in JS (falls back to the existing delays) */
+.dx-dash .dx-card, .dx-dash .dx-hero-stat { animation: dxRise .6s var(--p-ease, ease) both; animation-delay: calc(var(--i, 0) * 60ms); }
+
+/* ---------- Dark ---------- */
+body[data-theme="dark"] .dx-dash .dx-card { background: linear-gradient(180deg, #1c3026, var(--dx-card) 140px); }
+body[data-theme="dark"] .dx-dash .dx-card:hover { box-shadow: 0 24px 50px -22px rgba(0, 0, 0, .7); }
+body[data-theme="dark"] .dx-dash .dx-kpi { background:
+    radial-gradient(260px 160px at var(--mx) var(--my), color-mix(in srgb, var(--tone) 22%, transparent), transparent 70%),
+    linear-gradient(145deg, color-mix(in srgb, var(--tone) 12%, #182820) 0%, #182820 60%); }
+body[data-theme="dark"] .dx-dash .dx-bars li:nth-child(2)::before { color: #1a2430; }
+
+@media (max-width: 760px) {
+  .dx-dash .dx-header { padding: 24px 20px 32px; border-radius: 20px; }
+  .dx-hero-strip { grid-template-columns: 1fr 1fr; }
+  .dx-gauge-wrap, .dx-gauge { width: 112px; height: 112px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dx-dash .dx-header::before, .dx-live-dot, .dx-dash .dx-stack span, .dx-dash .dx-bar span,
+  .dx-dash .dx-card, .dx-dash .dx-hero-stat { animation: none; }
+  .dx-dash .dx-kpi, .dx-dash .dx-card, .dx-dash .dx-hero-stat { transition: none; }
+}
+@media print {
+  .dx-dash .dx-header::before, .dx-live { display: none; }
+  .dx-dash .dx-header h2, .dx-dash .dx-kpi-value { -webkit-text-fill-color: currentColor; background: none; }
+}
+
+/* ---------- Compact hero (v2) ---------- */
+.dx-dash .dx-header {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 24px; row-gap: 14px;
+  padding: 20px 24px 22px; border-radius: 20px;
+}
+.dx-dash .dx-header h2 { margin: 8px 0 2px; font-size: clamp(1.3rem, 2vw, 1.75rem); }
+.dx-dash .dx-header p { font-size: .88rem; }
+.dx-dash .dx-eyebrow { padding: 3px 10px; font-size: .68rem; }
+.dx-dash .dx-live { margin-top: 8px; padding: 3px 11px; font-size: .74rem; }
+.dx-dash .dx-header-actions { gap: 8px; align-items: flex-end; }
+.dx-dash .dx-range a { padding: 5px 11px; font-size: .78rem; }
+.dx-dash .dx-header .dx-btn { padding: 6px 11px; font-size: .78rem; border-radius: 9px; }
+.dx-dash .dx-quick { gap: 6px; }
+.dx-hero-strip { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 0; }
+.dx-hero-stat { display: grid; grid-template-columns: 1fr auto; align-items: baseline; column-gap: 8px; padding: 9px 14px; border-radius: 13px; }
+.dx-hero-stat small { grid-column: 1 / -1; font-size: .62rem; }
+.dx-hero-stat strong { margin: 0; font-size: 1.02rem; }
+.dx-hero-stat em { font-size: .68rem; text-align: right; }
+.dx-dash .dx-header::after { height: 4px; }
+@media (max-width: 1000px) {
+  .dx-dash .dx-header { grid-template-columns: 1fr; }
+  .dx-dash .dx-header-actions, .dx-dash .dx-quick { align-items: flex-start; justify-content: flex-start; }
+  .dx-hero-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
