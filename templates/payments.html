@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Payment Tracking &amp; Collections – ADUFARMS{% endblock %}
 {% block content %}
+{% from "_dx.html" import chip, stat, period_header, insights, tab_bar with context %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='dx-7') }}">
+{% set qs = {} %}{% for key, value in filters.items() %}{% if value %}{% set _ = qs.update({key: value}) %}{% endif %}{% endfor %}
+{% set filtered = qs|length > 0 %}
 <div class="ops-module ops-module-payments">
 <span id="new" class="anchor-target" aria-hidden="true"></span>
 <div class="dashboard-heading">
@@ -88,7 +92,13 @@
 </div>
 {% endif %}
 
-<div id="newPaymentCard" class="card my-3">
+{{ tab_bar([('record', 'cash-coin', 'Record payment', none), ('ledger', 'list-ul', 'Payment history', metrics.count), ('analytics', 'graph-up-arrow', 'Analytics', none)],
+           ('GH₵' ~ '{:,.0f}'.format(pa.watch.about_to_age) ~ ' about to pass 60 days') if pa.watch.about_to_age > 0.005 else '') }}
+
+<section id="tab-record" class="dx-panel">
+<div class="row g-3">
+<div class="col-xl-8">
+<div id="newPaymentCard" class="card">
   <div class="card-body">
     <h5 class="card-title mb-3">
       <i class="bi bi-cash-coin text-success me-2"></i>Record Settlement Payment
@@ -164,6 +174,54 @@
   </div>
 </div>
 
+</div>
+<div class="col-xl-4">
+  <div class="card dx-check" id="payCheck">
+    <div class="card-body">
+      <h6 class="dx-check-title"><i class="bi bi-clipboard-check"></i> Payment check</h6>
+      <p class="dx-check-empty" id="checkEmpty">Choose a customer and sale, enter the amount, and I will show what is left to pay and flag anything unusual.</p>
+      <dl class="dx-check-facts" id="checkFacts" hidden>
+        <div><dt>Customer owes (all sales)</dt><dd id="ckOwed">—</dd></div>
+        <div><dt>This sale's balance</dt><dd id="ckSale">—</dd></div>
+        <div class="dx-big"><dt>Left on this sale after paying</dt><dd id="ckLeft">—</dd></div>
+        <div><dt>Customer owes after</dt><dd id="ckAfter">—</dd></div>
+      </dl>
+      <ul class="dx-flags" id="checkFlags"></ul>
+    </div>
+  </div>
+  <div class="card dx-restock mt-3" id="openSalesCard" hidden>
+    <div class="card-body">
+      <h6 class="dx-check-title"><i class="bi bi-list-check"></i> Open sales <span class="dx-muted" id="openSalesFor"></span></h6>
+      <ul class="dx-openlist" id="openSalesList"></ul>
+      <p class="mb-0 small text-muted">Oldest first. Click one to select it.</p>
+    </div>
+  </div>
+</div>
+</div>
+</section>
+
+<section id="tab-ledger" class="dx-panel" hidden>
+<form class="dx-filters" method="get" action="{{ url_for('payments') }}">
+  <input type="search" class="form-control form-control-sm" name="q" value="{{ filters.q }}" placeholder="Search ID, sale, reference, customer...">
+  <select class="form-select form-select-sm" name="customer">
+    <option value="">All customers</option>
+    {% for c in customers %}<option value="{{ c.id }}" {{ 'selected' if filters.customer == c.id }}>{{ c.name }}</option>{% endfor %}
+  </select>
+  <select class="form-select form-select-sm" name="method">
+    <option value="">Any channel</option>
+    {% for value, label in (('mobile', 'Mobile Money'), ('cash', 'Cash'), ('bank', 'Bank transfer'), ('cheque', 'Cheque')) %}<option value="{{ value }}" {{ 'selected' if filters.method == value }}>{{ label }}</option>{% endfor %}
+  </select>
+  <label>From <input type="date" class="form-control form-control-sm" name="pfrom" value="{{ filters.pfrom }}"></label>
+  <label>To <input type="date" class="form-control form-control-sm" name="pto" value="{{ filters.pto }}"></label>
+  <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-funnel"></i> Filter</button>
+  {% if filtered %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('payments') }}#ledger">Reset</a>{% endif %}
+  {% if can_export %}<a class="btn btn-sm btn-outline-success ms-auto" href="{{ url_for('payments_export', **qs) }}"><i class="bi bi-download"></i> Export CSV</a>{% endif %}
+</form>
+<div class="dx-summary">
+  <span><strong>{{ ledger_totals.n }}</strong> payment{{ '' if ledger_totals.n == 1 else 's' }}{% if filtered %} match{% endif %}</span>
+  <span><strong>{{ ledger_totals.total|money }}</strong> collected</span>
+  {% if ledger_totals.n %}<span><strong>{{ (ledger_totals.total / ledger_totals.n)|money }}</strong> average</span>{% endif %}
+</div>
 <div class="card">
   <div class="card-body">
     <div class="panel-title d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
@@ -207,8 +265,8 @@
               {% if r.deleted %}<span class="status-badge status-reversed ms-1">REVERSED</span>{% endif %}
             </td>
             <td>
-              <a href="{{ url_for('transaction_history', transaction_id=r.sales_id) }}" class="sales-link-pill" title="View sales order">
-                <i class="bi bi-cart3 me-1"></i>{{ r.sales_id }}
+              <a href="{{ url_for('transaction_history', transaction_id=r.sale_ref) }}" class="sales-link-pill" title="View sales order">
+                <i class="bi bi-cart3 me-1"></i>{{ r.sale_ref }}
               </a>
             </td>
             <td>
@@ -226,7 +284,7 @@
             </td>
             <td>
               <span class="text-nowrap text-dark">
-                <i class="bi bi-calendar-event text-muted me-1"></i>{{ r.payment_date|pretty_date }}
+                <i class="bi bi-calendar-event text-muted me-1"></i>{{ r.payment_date|short_date }}
               </span>
             </td>
             <td class="text-end">
@@ -259,10 +317,10 @@
             </td>
             <td class="text-end">
               <div class="btn-group btn-group-sm">
-                <a class="btn btn-outline-primary" href="{{ url_for('transaction_history', transaction_id=r.sales_id) }}" title="View Sales History">
+                <a class="btn btn-outline-primary" href="{{ url_for('transaction_history', transaction_id=r.sale_ref) }}" title="View Sales History">
                   <i class="bi bi-clock-history"></i>
                 </a>
-                <a class="btn btn-outline-dark" href="{{ url_for('invoice', transaction_id=r.sales_id) }}" title="View Tax Invoice">
+                <a class="btn btn-outline-dark" href="{{ url_for('invoice', transaction_id=r.sale_ref) }}" title="View Tax Invoice">
                   <i class="bi bi-receipt"></i>
                 </a>
                 {% if session.get('role') == 'ADMIN' %}
@@ -318,11 +376,90 @@
     </div>
   </div>
 </div>
+</section>
+
+<!-- ============ ANALYTICS ============ -->
+<section id="tab-analytics" class="dx-panel" hidden>
+<div class="dx">
+  {{ period_header(pa, 'payments', 'Collections analytics', 'How fast money comes in, how it arrives, and who is slow to pay.', '#analytics') }}
+  {% set k = pa.kpis %}
+  {% if not pa.has_data %}<section class="dx-card"><p class="dx-empty"><i class="bi bi-wallet2"></i> No payments in this period. Record one, or pick a wider period.</p></section>{% endif %}
+
+  <section class="dx-kpis dx-kpis-wide">
+    {{ stat('blue', 'wallet2', 'Collected', k.collected|money, k.count ~ (' payment' if k.count == 1 else ' payments') ~ ' from ' ~ k.payers ~ (' customer' if k.payers == 1 else ' customers'), pa.deltas.collected) }}
+    {{ stat('green', 'receipt', 'Billed', k.billed|money, 'Sales made in this period', pa.deltas.billed) }}
+    {{ stat('gold', 'percent', 'Collected vs billed', ('%.0f%%'|format(k.collection_ratio * 100)) if k.collection_ratio is not none else '—', ('Receivables ' ~ ('grew' if k.net_receivable_change > 0 else 'shrank') ~ ' by ' ~ (k.net_receivable_change|abs|money))) }}
+    {{ stat('red', 'hourglass-split', 'Days to get paid', ('%.0f days'|format(k.days_to_pay)) if k.days_to_pay is not none else '—', 'Amount-weighted average', pa.deltas.days_to_pay, False) }}
+    {{ stat('violet', 'cash', 'Average payment', (k.avg_payment|money) if k.avg_payment is not none else '—', 'Largest ' ~ (k.biggest|money), pa.deltas.avg_payment) }}
+    {{ stat('teal', 'hourglass', 'Still owed (all time)', pa.receivables.total|money, (pa.receivables.debtors|length) ~ ' customer' ~ ('' if pa.receivables.debtors|length == 1 else 's') ~ ' owe money') }}
+  </section>
+
+  <section class="dx-grid">
+    <div class="dx-card dx-span-8">
+      <div class="dx-card-head"><h3><i class="bi bi-bar-chart-line"></i> Collections vs billing</h3><span class="dx-muted">per {{ pa.series.granularity }} · line = running total collected</span></div>
+      <div class="dx-chart"><canvas id="paTrend"></canvas></div>
+    </div>
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-stars"></i> Collection insights</h3></div>
+      {{ insights(pa.insights, 'Insights appear as payments are recorded.') }}
+    </div>
+  </section>
+
+  <section class="dx-grid">
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-pie-chart"></i> How customers pay</h3></div>
+      {% if pa.methods %}<div class="dx-donut"><canvas id="paMethods"></canvas></div>
+      <ul class="dx-legend">{% for m in pa.methods %}<li><i data-i="{{ loop.index0 }}" class="pa-dot"></i><span>{{ m.method }} ({{ m.count }})</span><strong>{{ m.total|money }}</strong></li>{% endfor %}</ul>
+      {% else %}<p class="dx-empty"><i class="bi bi-wallet2"></i> No payments yet.</p>{% endif %}
+    </div>
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-clock-history"></i> Receivables ageing</h3><span class="dx-muted">{{ pa.receivables.total|money }}</span></div>
+      {% set colors = {'0-7 days':'#16a34a','8-30 days':'#84cc16','31-60 days':'#f59e0b','Over 60 days':'#dc2626','Opening balances':'#64748b'} %}
+      {% if pa.receivables.total > 0.005 %}
+      <div class="dx-stack">{% for label, amount in pa.receivables.buckets.items() if amount > 0.005 %}<span style="flex:{{ amount }};background:{{ colors[label] }}" title="{{ label }}: {{ amount|money }}"></span>{% endfor %}</div>
+      <ul class="dx-legend">{% for label, amount in pa.receivables.buckets.items() %}<li><i style="background:{{ colors[label] }}"></i><span>{{ label }}</span><strong>{{ amount|money }}</strong></li>{% endfor %}</ul>
+      {% else %}<p class="dx-empty"><i class="bi bi-check-circle"></i> Nothing is owed.</p>{% endif %}
+      {% if pa.watch.about_to_age > 0.005 %}<p class="dx-watch"><i class="bi bi-alarm"></i> {{ pa.watch.about_to_age|money }} passes 60 days within two weeks.</p>{% endif %}
+    </div>
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-calendar-week"></i> Collection days</h3></div>
+      <div class="dx-chart dx-chart-sm"><canvas id="paWeekday"></canvas></div>
+    </div>
+  </section>
+
+  <section class="dx-grid">
+    <div class="dx-card dx-span-6">
+      <div class="dx-card-head"><h3><i class="bi bi-trophy"></i> Top payers</h3><span class="dx-muted">in this period</span></div>
+      {% if pa.top_payers %}
+      <ol class="dx-bars">{% set top = pa.top_payers[0].total or 1 %}
+        {% for p in pa.top_payers %}<li><div class="dx-bar-row"><a href="{{ url_for('customer_statement', customer_id=p.id) }}">{{ p.name }}</a><strong>{{ p.total|money }}</strong></div>
+          <div class="dx-bar"><span style="width:{{ (p.total / top * 100)|round(1) }}%"></span></div><small>{{ p.count }} payment{{ '' if p.count == 1 else 's' }}</small></li>{% endfor %}
+      </ol>{% else %}<p class="dx-empty"><i class="bi bi-people"></i> No payments in this period.</p>{% endif %}
+    </div>
+    <div class="dx-card dx-span-6">
+      <div class="dx-card-head"><h3><i class="bi bi-person-exclamation"></i> Slow payers who still owe</h3><span class="dx-muted">usually take 30+ days</span></div>
+      {% if pa.slow %}
+      <div class="dx-table-wrap"><table class="dx-table">
+        <thead><tr><th>Customer</th><th class="dx-num">Usual days</th><th class="dx-num">Owes</th><th>Oldest</th></tr></thead>
+        <tbody>{% for s in pa.slow %}<tr>
+          <td data-label="Customer"><a href="{{ url_for('customer_statement', customer_id=s.id) }}"><strong>{{ s.name }}</strong></a></td>
+          <td data-label="Usual days" class="dx-num">{{ '%.0f'|format(s.days) }}</td>
+          <td data-label="Owes" class="dx-num dx-neg">{{ s.owed|money }}</td>
+          <td data-label="Oldest"><span class="dx-pill {{ 'dx-pill-bad' if s.oldest > 60 else 'dx-pill-warn' if s.oldest > 30 else 'dx-pill-good' }}">{{ s.oldest }} days</span></td></tr>{% endfor %}</tbody>
+      </table></div>
+      {% else %}<p class="dx-empty"><i class="bi bi-emoji-smile"></i> No habitual slow payers with open balances.</p>{% endif %}
+    </div>
+  </section>
+  <p class="dx-foot">Days to get paid is weighted by payment amount. Reversed and deleted payments are excluded.</p>
 </div>
+</section>
+</div>
+<script id="paData" type="application/json">{{ {'series': pa.series, 'methods': pa.methods, 'weekday': pa.weekday, 'memory': memory}|tojson }}</script>
 
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/dx.js') }}"></script>
 <script>
 const paymentSale = document.getElementById('paymentSale');
 let currentSaleBalance = 0;
@@ -365,5 +502,68 @@ document.querySelectorAll('.table-filter-btn').forEach(btn => {
   });
 });
 
+
+/* ---------- tabs, payment check, analytics charts ---------- */
+(function () {
+  const data = JSON.parse(document.getElementById('paData').textContent), mem = data.memory, byCustomer = mem.customers;
+  const $ = s => document.querySelector(s), gh = v => 'GH₵' + Number(v).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const filtered = ['q', 'customer', 'method', 'pfrom', 'pto'].some(k => new URLSearchParams(location.search).get(k));
+  DX.tabs({ initial: {{ ('analytics' if analytics_requested else '')|tojson }} || (filtered ? 'ledger' : ''), onFirstShow: { analytics: initCharts } });
+
+  const customerSel = $('#paymentCustomer'), saleSel = $('#paymentSale'), amountEl = $('#paymentAmountInput');
+  const flag = (level, icon, text) => '<li class="dx-flag dx-flag-' + level + '"><i class="bi bi-' + icon + '"></i><span>' + text + '</span></li>';
+
+  function renderOpenSales() {
+    const c = byCustomer[customerSel.value], card = $('#openSalesCard'), list = $('#openSalesList');
+    if (!c || !c.open.length) { card.hidden = true; return; }
+    card.hidden = false;
+    $('#openSalesFor').textContent = '· owes ' + gh(c.owed);
+    list.innerHTML = c.open.map(s => '<li><button type="button" data-sale="' + s.sales_id + '" class="' + (saleSel.value === s.sales_id ? 'active' : '') + '"><span>' + s.sales_id +
+      '<small>' + s.date + ' · ' + s.age + ' days old</small></span><strong>' + gh(s.balance) + '</strong></button></li>').join('');
+    list.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { saleSel.disabled = false; saleSel.value = b.dataset.sale; saleSel.dispatchEvent(new Event('change', { bubbles: true })); }));
+  }
+
+  function update() {
+    renderOpenSales();
+    const c = byCustomer[customerSel.value], opt = saleSel.options[saleSel.selectedIndex];
+    const balance = opt && opt.dataset.balance ? parseFloat(opt.dataset.balance) : 0, amount = parseFloat(amountEl.value) || 0;
+    const facts = $('#checkFacts'), flags = $('#checkFlags');
+    if (!customerSel.value || !balance) { facts.hidden = true; $('#checkEmpty').hidden = false; flags.innerHTML = ''; return; }
+    $('#checkEmpty').hidden = true; facts.hidden = false;
+    const owed = c ? c.owed : balance, left = Math.max(balance - amount, 0);
+    $('#ckOwed').textContent = gh(owed); $('#ckSale').textContent = gh(balance);
+    $('#ckLeft').textContent = amount > 0 ? gh(left) : '—'; $('#ckAfter').textContent = amount > 0 ? gh(Math.max(owed - amount, 0)) : '—';
+    const out = [], method = ($('[name="payment_method"]').value || '').toLowerCase(), ref = ($('[name="payment_reference"]').value || '').trim().toLowerCase();
+    if (amount > balance + 0.005) out.push(flag('bad', 'x-octagon', 'More than this sale owes (' + gh(balance) + '). The system will reject it.'));
+    else if (amount > 0 && left <= 0.005) out.push(flag('good', 'check-circle', 'This clears the sale completely.'));
+    else if (amount > 0) out.push(flag('info', 'pie-chart', 'Part payment: ' + gh(left) + ' will still be owed on this sale (' + Math.round(left / balance * 100) + '%).'));
+    if (ref && mem.references.includes(ref)) out.push(flag('warn', 'files', 'This reference was used before. Check it is not a duplicate entry.'));
+    if (amount >= mem.large_cash && method.includes('cash')) out.push(flag('warn', 'cash-stack', 'Large cash payment. Count it twice and record who received it.'));
+    if (c && c.avg && amount > c.avg * 3 && amount > 0) out.push(flag('info', 'graph-up-arrow', 'Much larger than their usual payment (~' + gh(c.avg) + ').'));
+    if (c && c.method && $('[name="payment_method"]') && !method.includes(c.method.toLowerCase().split(' ')[0]) && amount > 0) out.push(flag('info', 'wallet2', 'They usually pay by ' + c.method + '.'));
+    if (!amount) out.push(flag('info', 'hand-index', 'Enter the amount received. "Pay Full Balance" fills it in.'));
+    flags.innerHTML = out.join('');
+  }
+  ['change', 'input'].forEach(ev => { [customerSel, saleSel, amountEl, $('[name="payment_method"]'), $('[name="payment_reference"]')].forEach(el => el && el.addEventListener(ev, () => setTimeout(update, 0))); });
+  $('[onclick="fillFullPayment()"]')?.addEventListener('click', () => setTimeout(update, 0));
+  if (customerSel.value) setTimeout(update, 50);
+
+  function initCharts() {
+    const { make, scales, money, palette, dark } = DX, s = data.series;
+    make('paTrend', { type: 'bar', data: { labels: s.labels, datasets: [
+        { label: 'Collected', data: s.collected, backgroundColor: 'rgba(37,99,235,0.78)', borderRadius: 4, order: 2 },
+        { label: 'Billed', data: s.billed, backgroundColor: 'rgba(22,163,74,0.55)', borderRadius: 4, order: 2 },
+        { label: 'Running total collected', data: s.cumulative, type: 'line', yAxisID: 'y2', borderColor: '#d97706', tension: 0.25, borderWidth: 2.5, pointRadius: 2, order: 1 }] },
+      options: { scales: scales({ y2: { position: 'right', beginAtZero: true, grid: { display: false }, ticks: { color: DX.ink(), callback: DX.num } } }),
+        plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + money(c.parsed.y) } } } } });
+    if (data.methods.length) {
+      make('paMethods', { type: 'doughnut', data: { labels: data.methods.map(m => m.method), datasets: [{ data: data.methods.map(m => m.total), backgroundColor: data.methods.map((_, i) => palette[i % palette.length]), borderWidth: 2, borderColor: dark() ? '#182820' : '#fff' }] },
+        options: { cutout: '66%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.label + ': ' + money(c.parsed) } } } } });
+      document.querySelectorAll('.pa-dot').forEach(el => { el.style.background = palette[Number(el.dataset.i) % palette.length]; });
+    }
+    make('paWeekday', { type: 'bar', data: { labels: data.weekday.map(x => x.day.slice(0, 3)), datasets: [{ label: 'Collected', data: data.weekday.map(x => x.total), backgroundColor: 'rgba(37,99,235,0.75)', borderRadius: 4 }] },
+      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => money(c.parsed.y) + ' · ' + data.weekday[c.dataIndex].count + ' payments' } } }, scales: scales() } });
+  }
+})();
 </script>
 {% endblock %}

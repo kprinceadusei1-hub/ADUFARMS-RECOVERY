@@ -12,13 +12,35 @@ A Flask + SQLite web application for maize trading/distribution.
 - Printable A4 invoice and PDF export
 - Customer/transaction search
 - Customer ledger with statements, opening balances and derived outstanding balances
-- Dashboard: stock, sales, payments, expenses and estimated profit
+- Dashboard: live KPIs with real month-over-month trends, six-month sales/collections/purchases chart, payment-status breakdown, activity feed, stock position and outstanding customer balances
 - Verified database assistant for stock, activity, balances and top-customer questions
 - Official branding path: `static/images/branding/adufarms-logo.jpg`
 - SQLite database
 - Filterable audit log with CSV export
 - Stock-movement CSV export for warehouse reconciliation
 - Responsive business interface
+
+## Analytics and smart assistance
+
+Every area has the same three-part layout: **enter data, review the ledger, analyse**. All figures are calculated live from your records (deleted and reversed entries are excluded).
+
+| Area | What you get |
+|---|---|
+| Dashboard | Period picker, KPIs with change vs the previous period, smart insights, receivables ageing, top customers |
+| Analytics (Admin / Manager / Accountant) | Business health score, sales outlook, price spread, cash flow, customer and supplier performance, custom date range, print, CSV |
+| Purchases | Live purchase check (real cost per KG, shortfall, price vs history), supplier memory, scorecards, restock assistant |
+| Sales | Live sale check (profit, margin, stock, customer balance), price suggestions, pricing guide, risky-sale detection |
+| Customers | Duplicate check while typing, credit score, segments (champion, loyal, at risk...), directory filters |
+| Payments | Open-sales picker, payment check, collections analytics, slow payers, "about to pass 60 days" watch |
+| Stock | Stock age (FIFO), ledger reconciliation, turnover, flow and level charts |
+| Invoices | Invoice health, ageing of unpaid invoices, "chase first" list |
+| Audit log | Activity insights: failed sign-ins, after-hours changes, sensitive actions, log-clearing warning |
+| Notifications | One prioritised alert per real issue, each linking to the screen that fixes it |
+| AI Assistant | Answers such as "Who should I call?", "Which supplier is best?", "When should I reorder?" from verified data |
+
+Set `ADUFARMS_LOW_STOCK_KG` to change the stock level that triggers low-stock alerts (default 1000).
+
+Provision accounts with `python create_admin.py` (random passwords, shown once; existing accounts are never overwritten unless you pass `--reset`).
 
 ## Run on Windows PowerShell
 
@@ -27,6 +49,7 @@ cd ADUFARMS
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+python create_admin.py   # creates role accounts with generated passwords (shown once)
 python app.py
 ```
 
@@ -40,6 +63,7 @@ $env:ADUFARMS_SECRET_KEY = "generate-a-long-random-secret"
 $env:ADUFARMS_COOKIE_SECURE = "1" # Use only when served over HTTPS
 $env:ADUFARMS_HOST = "127.0.0.1"
 $env:ADUFARMS_PORT = "5000"
+$env:ADUFARMS_LOW_STOCK_KG = "1000" # stock level that triggers low-stock alerts
  .\.venv\Scripts\Activate.ps1
 python run_production.py
 ```
@@ -49,10 +73,13 @@ Use a reverse proxy with HTTPS when exposing the service beyond the local machin
 Run the automated checks with:
 
 ```powershell
+pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
 ## First login
+Run `python create_admin.py` to provision the role accounts. It never uses well-known default passwords: set `ADUFARMS_ADMIN_PASSWORD` (etc.) yourself, or a strong random password is generated and shown once. Existing accounts are left alone unless you pass `--reset`.
+
 Use an administrator account already provisioned for your environment. The application does not display or create a known default password.
 
 Staff can create purchases, customers, sales and payments. Financial-record edits, reversals, permanent deletion, user management, backups and audit logs are restricted to administrators.

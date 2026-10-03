@@ -251,6 +251,43 @@
   </div>
   {% endif %}
 
+  {% if health and health.count %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='dx-9') }}">
+  {% from "_dx.html" import insights with context %}
+  <section class="dx no-print invoice-health">
+    <div class="dx-grid">
+      <div class="dx-card dx-span-4">
+        <div class="dx-card-head"><h3><i class="bi bi-receipt"></i> Invoice health</h3><span class="dx-muted">{{ health.count }} invoices</span></div>
+        {% set tone = {'PAID': '#16a34a', 'PART PAYMENT': '#f59e0b', 'UNPAID': '#dc2626', 'OVERPAID': '#2563eb'} %}
+        <div class="dx-stack">{% for name, s in health.statuses.items() if s.count %}<span style="flex:{{ s.count }};background:{{ tone[name] }}" title="{{ name|title }}: {{ s.count }}"></span>{% endfor %}</div>
+        <ul class="dx-legend">{% for name, s in health.statuses.items() %}<li><i style="background:{{ tone[name] }}"></i><span>{{ name|title }} ({{ s.count }})</span><strong>{{ s.amount|money }}</strong></li>{% endfor %}</ul>
+        <dl class="dx-facts mt-3">
+          <div><dt>Billed</dt><dd>{{ health.billed|money }}</dd></div><div><dt>Still owed</dt><dd class="{{ 'dx-neg' if health.outstanding > 0.005 }}">{{ health.outstanding|money }}</dd></div>
+          <div><dt>Average invoice</dt><dd>{{ health.avg_invoice|money if health.avg_invoice else '—' }}</dd></div><div><dt>Fully paid</dt><dd>{{ ('%.0f%%'|format(health.paid_share * 100)) if health.paid_share is not none else '—' }}</dd></div>
+        </dl>
+      </div>
+      <div class="dx-card dx-span-4">
+        <div class="dx-card-head"><h3><i class="bi bi-clock-history"></i> Unpaid invoices by age</h3></div>
+        {% set colors = {'0-7 days':'#16a34a','8-30 days':'#84cc16','31-60 days':'#f59e0b','Over 60 days':'#dc2626'} %}
+        <ul class="dx-legend">{% for label, b in health.bands.items() %}<li><i style="background:{{ colors[label] }}"></i><span>{{ label }} ({{ b.count }})</span><strong>{{ b.amount|money }}</strong></li>{% endfor %}</ul>
+        {{ insights(health.tips, 'No invoices need urgent attention.') }}
+      </div>
+      <div class="dx-card dx-span-4">
+        <div class="dx-card-head"><h3><i class="bi bi-telephone-outbound"></i> Chase first</h3><span class="dx-muted">oldest unpaid</span></div>
+        {% if health.follow_up %}
+        <ul class="dx-feed">
+          {% for f in health.follow_up %}
+          <li><span class="dx-dot {{ 'dx-dot-purchase' if f.age > 30 else 'dx-dot-sale' }}"></span>
+            <div><strong><a href="{{ url_for('invoice', transaction_id=f.sales_id) }}">{{ f.invoice or f.sales_id }}</a> · {{ f.balance|money }}</strong>
+            <small>{{ f.customer }}{% if f.phone %} · {{ f.phone }}{% endif %} · {{ f.age }} days old</small></div></li>
+          {% endfor %}
+        </ul>
+        {% else %}<p class="dx-empty"><i class="bi bi-emoji-smile"></i> Every invoice is paid.</p>{% endif %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
   {% if not searching and invoice_history %}
   <section class="invoice-history-panel no-print">
     <div class="panel-title">

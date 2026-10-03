@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Customer / Sales – ADUFARMS{% endblock %}
 {% block content %}
+{% from "_dx.html" import chip, stat, period_header, insights, tab_bar with context %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='dx-5') }}">
+{% set k = sa.kpis %}
+{% set qs = {} %}{% for key, value in filters.items() %}{% if value %}{% set _ = qs.update({key: value}) %}{% endif %}{% endfor %}
+{% set filtered = qs|length > 0 %}
+
 <div class="ops-module ops-module-sales">
 <span id="new" class="anchor-target" aria-hidden="true"></span>
 {% if related_purchase %}
@@ -13,246 +19,473 @@
 </div>
 {% endif %}
 
-<div class="dashboard-heading">
-  <div>
-    <h2>Customer Sales &amp; Dispatch</h2>
-    <p>Available stock: <strong>{{ "{:,.2f}".format(stock) }} KG</strong></p>
-  </div>
-  <span class="status-badge status-paid"><i class="bi bi-box-seam"></i> STOCK AVAILABLE</span>
-</div>
+{{ tab_bar([('record', 'cart-plus', 'New sale', none), ('ledger', 'list-ul', 'Sales ledger', total_sales), ('analytics', 'graph-up-arrow', 'Analytics', none)],
+           'Below cost: ' ~ sa.risky.below_cost ~ ' sale' ~ ('s' if sa.risky.below_cost != 1 else '') if sa.risky.below_cost else '') }}
 
-<div class="card my-3">
-  <div class="card-body">
-    <form method="post" class="smart-form">
-      {{ csrf_input() }}
-      {% if selected_customer %}
-      <div class="alert customer-select-banner {{ selected_customer.name|customer_theme }} d-flex align-items-center gap-3 mb-3 p-3 border-2" role="status">
-        <span class="customer-avatar customer-avatar-lg {{ selected_customer.name|customer_theme }}">{{ selected_customer.name|customer_initials }}</span>
-        <div class="flex-grow-1">
-          <div class="d-flex align-items-center gap-2 mb-1">
-            <span class="badge bg-success"><i class="bi bi-check2-circle me-1"></i>CUSTOMER SELECTED</span>
-            <strong class="fs-6">{{ selected_customer.name }}</strong>
-            {{ selected_customer.customer_type|customer_type_badge }}
+<!-- ============ NEW SALE ============ -->
+<section id="tab-record" class="dx-panel">
+  <div class="row g-3">
+    <div class="col-xl-8">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+            <h5 class="mb-0">Customer Sales &amp; Dispatch</h5>
+            <span class="status-badge {{ 'status-paid' if stock > 0 else 'status-unpaid' }}"><i class="bi bi-box-seam"></i> {{ "{:,.2f}".format(stock) }} KG AVAILABLE</span>
           </div>
-          <div class="text-dark small">
-            <strong>Phone:</strong> {{ selected_customer.phone or 'Not recorded' }}{% if selected_customer.location %} · <strong>Location:</strong> {{ selected_customer.location }}{% endif %}{% if selected_customer.address %} · <strong>Address:</strong> {{ selected_customer.address }}{% endif %}
-          </div>
+          <form method="post" class="smart-form" id="saleForm" autocomplete="off">
+            {{ csrf_input() }}
+            {% if selected_customer %}
+            <div class="alert customer-select-banner {{ selected_customer.name|customer_theme }} d-flex align-items-center gap-3 mb-3 p-3 border-2" role="status">
+              <span class="customer-avatar customer-avatar-lg {{ selected_customer.name|customer_theme }}">{{ selected_customer.name|customer_initials }}</span>
+              <div class="flex-grow-1">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                  <span class="badge bg-success"><i class="bi bi-check2-circle me-1"></i>CUSTOMER SELECTED</span>
+                  <strong class="fs-6">{{ selected_customer.name }}</strong>
+                  {{ selected_customer.customer_type|customer_type_badge }}
+                </div>
+                <div class="text-dark small">
+                  <strong>Phone:</strong> {{ selected_customer.phone or 'Not recorded' }}{% if selected_customer.location %} · <strong>Location:</strong> {{ selected_customer.location }}{% endif %}{% if selected_customer.address %} · <strong>Address:</strong> {{ selected_customer.address }}{% endif %}
+                </div>
+              </div>
+              <a href="{{ url_for('sales') }}" class="btn btn-sm btn-outline-secondary">Choose another</a>
+            </div>
+            {% endif %}
+
+            <div class="form-section">
+              <div class="form-section-title"><i class="bi bi-person-vcard"></i> Customer information</div>
+              <input type="hidden" name="customer_id" id="selectedCustomerId" value="{{ selected_customer.id if selected_customer else '' }}">
+              <div class="row g-3">
+                <div class="col-md-3">
+                  <label class="form-label">Sale date <span class="required-mark">*</span></label>
+                  <input type="date" name="sale_date" value="{{today}}" max="{{today}}" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label">Registered Customer</label>
+                  <select id="registeredCustomerSelect" class="form-select" onchange="onSelectExistingCustomer(this)">
+                    <option value="">-- Select Registered Customer --</option>
+                    {% for c in customers %}
+                    <option value="{{ c.id }}" data-name="{{ c.name }}" data-phone="{{ c.phone or '' }}" data-location="{{ c.location or '' }}" {% if selected_customer and selected_customer.id == c.id %}selected{% endif %}>
+                      {{ c.name }}{% if c.location %} ({{ c.location }}){% elif c.phone %} ({{ c.phone }}){% endif %}
+                    </option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label">Customer name <span class="required-mark">*</span></label>
+                  <input name="customer_name" id="customerNameInput" class="form-control" placeholder="Customer or business name" value="{{ selected_customer.name if selected_customer else '' }}" required list="customerDataList">
+                  <datalist id="customerDataList">
+                    {% for c in customers %}<option value="{{ c.name }}">{{ c.phone or '' }} - {{ c.location or '' }}</option>{% endfor %}
+                  </datalist>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label">Customer phone</label>
+                  <input name="customer_phone" id="customerPhoneInput" class="form-control" placeholder="024 000 0000" value="{{ selected_customer.phone if selected_customer else '' }}">
+                </div>
+              </div>
+              <div class="dx-hint" id="customerHint" hidden></div>
+            </div>
+            <div class="form-section">
+              <div class="form-section-title"><i class="bi bi-cart3"></i> Sale details</div>
+              <div class="row g-3">
+                <div class="col-md-4">
+                  <label class="form-label">Quantity sold (KG) <span class="required-mark">*</span></label>
+                  <input type="number" min="0.01" step="0.01" name="quantity_kg" class="form-control" required>
+                  <div class="dx-quickfill" id="qtyQuick" hidden></div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Selling price per KG <span class="required-mark">*</span></label>
+                  <input type="number" min="0" step="0.01" name="selling_price_kg" class="form-control" required>
+                  <div class="dx-quickfill" id="priceQuick"></div>
+                </div>
+                <div class="col-md-4">
+                  <div class="stat-label">Total sale</div>
+                  <div class="stat-value" id="saleTotal">GH₵0.00</div>
+                  <div class="stat-support">Validated against available stock</div>
+                </div>
+              </div>
+            </div>
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check2-circle me-1"></i> Create sale</button>
+          </form>
         </div>
-        <a href="{{ url_for('sales') }}" class="btn btn-sm btn-outline-secondary">Choose another</a>
+      </div>
+    </div>
+    <div class="col-xl-4">
+      <div class="card dx-check" id="saleCheck">
+        <div class="card-body">
+          <h6 class="dx-check-title"><i class="bi bi-clipboard-check"></i> Sale check</h6>
+          <p class="dx-check-empty" id="checkEmpty">Enter the quantity and price and I will show your profit on this load and warn you about anything risky.</p>
+          <dl class="dx-check-facts" id="checkFacts" hidden>
+            <div><dt>Total sale</dt><dd id="ckTotal">—</dd></div>
+            <div><dt>Stock after sale</dt><dd id="ckStock">—</dd></div>
+            <div class="dx-big"><dt>Estimated profit</dt><dd id="ckProfit">—</dd></div>
+            <div><dt>Margin</dt><dd id="ckMargin">—</dd></div>
+            <div><dt>Customer would owe</dt><dd id="ckOwe">—</dd></div>
+          </dl>
+          <ul class="dx-flags" id="checkFlags"></ul>
+        </div>
+      </div>
+      <div class="card dx-restock mt-3">
+        <div class="card-body">
+          <h6 class="dx-check-title"><i class="bi bi-tag"></i> Pricing guide</h6>
+          {% if sa.pricing.cost > 0 %}
+          <p class="mb-2 small">Your average cost is <strong>{{ sa.pricing.cost|money }}/KG</strong>. Prices for a target margin:</p>
+          <ul class="dx-legend">
+            {% for t in sa.pricing.targets %}<li><i style="background:#16a34a"></i><span>{{ '%.0f%%'|format(t.margin * 100) }} margin</span><strong>{{ t.price|money }}</strong></li>{% endfor %}
+          </ul>
+          {% if sa.pricing.recent_avg %}<p class="mt-2 mb-0 small text-muted">Last 30 days you sold at {{ sa.pricing.recent_avg|money }}/KG on average ({{ sa.pricing.recent_low|money }} – {{ sa.pricing.recent_high|money }}).</p>{% endif %}
+          {% else %}<p class="mb-0 small text-muted">Record a purchase so the guide can work out your cost per KG.</p>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LEDGER ============ -->
+<section id="tab-ledger" class="dx-panel" hidden>
+  <div class="card">
+    <div class="card-body">
+      <form class="dx-filters" method="get" action="{{ url_for('sales') }}">
+        {% if related_purchase %}<input type="hidden" name="related_purchase" value="{{ request.args.get('related_purchase') }}">{% endif %}
+        <input type="search" class="form-control form-control-sm" name="q" value="{{ filters.q }}" placeholder="Search ID, invoice, customer, phone...">
+        <select class="form-select form-select-sm" name="customer">
+          <option value="">All customers</option>
+          {% for c in customers %}<option value="{{ c.id }}" {{ 'selected' if filters.customer == c.id }}>{{ c.name }}</option>{% endfor %}
+        </select>
+        <select class="form-select form-select-sm" name="status">
+          <option value="">Any payment status</option>
+          {% for value, label in (('paid', 'Fully paid'), ('part', 'Part paid'), ('unpaid', 'Unpaid')) %}<option value="{{ value }}" {{ 'selected' if filters.status == value }}>{{ label }}</option>{% endfor %}
+        </select>
+        <label>From <input type="date" class="form-control form-control-sm" name="sfrom" value="{{ filters.sfrom }}"></label>
+        <label>To <input type="date" class="form-control form-control-sm" name="sto" value="{{ filters.sto }}"></label>
+        <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-funnel"></i> Filter</button>
+        {% if filtered %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('sales') }}#ledger">Reset</a>{% endif %}
+        {% if can_export %}<a class="btn btn-sm btn-outline-success ms-auto" href="{{ url_for('sales_export', **qs) }}"><i class="bi bi-download"></i> Export CSV</a>{% endif %}
+      </form>
+      <div class="dx-summary">
+        <span><strong>{{ ledger_totals.n }}</strong> sale{{ '' if ledger_totals.n == 1 else 's' }}</span>
+        <span><strong>{{ ledger_totals.revenue|money }}</strong> billed</span>
+        <span><strong>{{ ledger_totals.paid|money }}</strong> paid</span>
+        <span class="{{ 'dx-neg' if ledger_totals.revenue - ledger_totals.paid > 0.005 }}"><strong>{{ (ledger_totals.revenue - ledger_totals.paid)|money }}</strong> outstanding</span>
+        <span><strong>{{ '{:,.0f}'.format(ledger_totals.kg) }} KG</strong></span>
+      </div>
+      {% if page_count > 1 %}
+      <div class="d-flex justify-content-between align-items-center mb-2 text-muted small">
+        <span>Page {{ page }} of {{ page_count }}</span>
+        <div class="btn-group btn-group-sm">
+          {% if page > 1 %}<a class="btn btn-outline-secondary" href="{{ url_for('sales', page=page-1, **qs) }}#ledger">Previous</a>{% endif %}
+          {% if page < page_count %}<a class="btn btn-outline-secondary" href="{{ url_for('sales', page=page+1, **qs) }}#ledger">Next</a>{% endif %}
+        </div>
       </div>
       {% endif %}
-
-      <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-person-vcard"></i> Customer information</div>
-        <input type="hidden" name="customer_id" id="selectedCustomerId" value="{{ selected_customer.id if selected_customer else '' }}">
-        <div class="row g-3">
-          <div class="col-md-3">
-            <label class="form-label">Sale date <span class="required-mark">*</span></label>
-            <input type="date" name="sale_date" value="{{today}}" class="form-control" required>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Registered Customer</label>
-            <select id="registeredCustomerSelect" class="form-select" onchange="onSelectExistingCustomer(this)">
-              <option value="">-- Select Registered Customer --</option>
-              {% for c in customers %}
-              <option value="{{ c.id }}" data-name="{{ c.name }}" data-phone="{{ c.phone or '' }}" data-location="{{ c.location or '' }}" {% if selected_customer and selected_customer.id == c.id %}selected{% endif %}>
-                {{ c.name }}{% if c.location %} ({{ c.location }}){% elif c.phone %} ({{ c.phone }}){% endif %}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Customer name <span class="required-mark">*</span></label>
-            <input name="customer_name" id="customerNameInput" class="form-control" placeholder="Customer or business name" value="{{ selected_customer.name if selected_customer else '' }}" required list="customerDataList">
-            <datalist id="customerDataList">
-              {% for c in customers %}
-              <option value="{{ c.name }}">{{ c.phone or '' }} - {{ c.location or '' }}</option>
-              {% endfor %}
-            </datalist>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Customer phone</label>
-            <input name="customer_phone" id="customerPhoneInput" class="form-control" placeholder="024 000 0000" value="{{ selected_customer.phone if selected_customer else '' }}">
-          </div>
-        </div>
-      </div>
-      <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-cart3"></i> Sale details</div>
-        <div class="row g-3">
-          <div class="col-md-4">
-            <label class="form-label">Quantity sold (KG) <span class="required-mark">*</span></label>
-            <input type="number" min="0.01" step="0.01" name="quantity_kg" class="form-control" required>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Selling price per KG <span class="required-mark">*</span></label>
-            <input type="number" min="0" step="0.01" name="selling_price_kg" class="form-control" required>
-          </div>
-          <div class="col-md-4">
-            <div class="stat-label">Total sale</div>
-            <div class="stat-value" id="saleTotal">GH₵0.00</div>
-            <div class="stat-support">Validated against available stock</div>
-          </div>
-        </div>
-      </div>
-      <button class="btn btn-primary" type="submit"><i class="bi bi-check2-circle me-1"></i> Create sale</button>
-    </form>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card-body">
-    <div class="panel-title d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <div class="d-flex align-items-center gap-2">
-        <span class="section-tag section-tag-sales"><i class="bi bi-cart-fill me-1"></i> Sales &amp; Dispatch</span>
-        <h5 class="mb-0">Recent Sales ({{ total_sales }})</h5>
-      </div>
-      <div class="table-tools mb-0">
-        <input class="form-control form-control-sm" data-table-search="#salesTable" placeholder="Search sales...">
-      </div>
-    </div>
-    {% if page_count > 1 %}
-    <div class="d-flex justify-content-between align-items-center mt-3 mb-2 text-muted small">
-      <span>Page {{ page }} of {{ page_count }}</span>
-      <div class="btn-group btn-group-sm">
-        {% if page > 1 %}
-        <a class="btn btn-outline-secondary" href="{{ url_for('sales', page=page-1) }}">Previous</a>
-        {% endif %}
-        {% if page < page_count %}
-        <a class="btn btn-outline-secondary" href="{{ url_for('sales', page=page+1) }}">Next</a>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
-    <div class="table-responsive">
-      <table id="salesTable" class="table table-hover align-middle sortable">
-        <thead>
-          <tr>
-            <th style="width:48px;" class="text-center">#</th>
-            <th data-sort>Sales ID</th>
-            <th data-sort>Invoice</th>
-            <th data-sort>Date</th>
-            <th data-sort>Customer</th>
-            <th data-sort>Product</th>
-            <th data-sort>Phone</th>
-            <th data-sort class="text-end">Quantity (KG)</th>
-            <th data-sort class="text-end">Total</th>
-            <th data-sort class="text-end">Paid</th>
-            <th data-sort class="text-end">Balance</th>
-            <th data-sort class="text-center">Status</th>
-            <th class="text-end">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in rows %}
-          {% set balance = r.total_sale - r.paid %}
-          <tr class="customer-row-accent {{ r.customer_name|customer_theme }}{% if r.deleted %} table-secondary text-muted{% endif %}">
-            <td class="text-center">
-              <span class="table-seq-num">{{ loop.index }}</span>
-            </td>
-            <td>
-              <a href="{{url_for('transaction_history',transaction_id=r.sales_id)}}" class="sales-id-pill">
-                <i class="bi bi-cart3 me-1"></i>{{r.sales_id}}
-              </a>
-              {% if r.deleted %}<span class="status-pill status-pill-reversed ms-1">REVERSED</span>{% endif %}
-            </td>
-            <td>
-              <a href="{{url_for('invoice',transaction_id=r.sales_id)}}" title="Open invoice">
-                <code>{{ r.invoice_number or 'Open invoice' }}</code>
-              </a>
-            </td>
-            <td>{{r.sale_date|pretty_date}}</td>
-            <td>
-              <div class="customer-chip">
-                <span class="customer-avatar {{ r.customer_name|customer_theme }}">
-                  {{ r.customer_name|customer_initials }}
-                </span>
-                <strong class="text-dark">{{ r.customer_name }}</strong>
-              </div>
-            </td>
-            <td>
-              <span class="product-tag-pill"><i class="bi bi-tag-fill me-1"></i>Maize Supply</span>
-            </td>
-            <td>{{r.phone or '-'}}</td>
-            <td class="text-end fw-bold">{{"{:,.2f}".format(r.quantity_kg)}} KG</td>
-            <td class="text-end fw-bold">{{r.total_sale|money}}</td>
-            <td class="text-end text-success fw-bold">{{r.paid|money}}</td>
-            <td class="text-end fw-bold">{{balance|money}}</td>
-            <td class="text-center">
-              {% if r.paid > r.total_sale + 0.005 %}
-                <span class="status-pill status-pill-overpaid"><i class="bi bi-plus-circle-fill me-1"></i>Overpaid</span>
-              {% elif balance <= 0.005 %}
-                <span class="status-pill status-pill-paid"><i class="bi bi-check-circle-fill me-1"></i>Paid</span>
-              {% elif r.paid > 0 %}
-                <span class="status-pill status-pill-pending"><i class="bi bi-clock-fill me-1"></i>Pending</span>
-              {% else %}
-                <span class="status-pill status-pill-unpaid"><i class="bi bi-exclamation-circle-fill me-1"></i>Unpaid</span>
-              {% endif %}
-            </td>
-            <td class="text-end">
-              <div class="btn-group btn-group-sm">
-                <a class="btn btn-outline-primary" href="{{url_for('invoice',transaction_id=r.sales_id)}}" title="View invoice">
-                  <i class="bi bi-receipt"></i>
-                </a>
-                {% if session.get('role') == 'ADMIN' %}
-                <a class="btn btn-outline-secondary" href="{{url_for('edit_sale',sale_id=r.id)}}" title="Edit sale">
-                  <i class="bi bi-pencil"></i>
-                </a>
-                <form class="d-inline" method="post" action="{{url_for('reverse_record_route',table='sales',record_id=r.id)}}" onsubmit="return confirm('Reverse this sale?');">
-                  {{ csrf_input() }}
-                  <button class="btn btn-outline-warning" title="Reverse sale">
-                    <i class="bi bi-arrow-counterclockwise"></i>
-                  </button>
-                </form>
-                <button type="button" class="btn btn-outline-danger" title="Delete transaction"
-                        data-bs-toggle="modal" data-bs-target="#deleteTransactionModal"
-                        data-delete-url="{{url_for('delete_record_route',table='sales',record_id=r.id)}}"
-                        data-delete-id="{{r.transaction_id}}"
-                        data-delete-type="Sale"
-                        data-delete-party="{{r.customer_name}}"
-                        data-delete-quantity="{{'{:,.2f}'.format(r.quantity_kg)}} KG"
-                        data-delete-amount="{{r.total_sale|money}}"
-                        data-delete-date="{{r.sale_date|pretty_date}}">
-                  <i class="bi bi-trash3"></i>
-                </button>
+      <div class="table-responsive">
+        <table id="salesTable" class="table table-hover align-middle sortable">
+          <thead>
+            <tr>
+              <th style="width:48px;" class="text-center">#</th>
+              <th data-sort>Sales ID</th>
+              <th data-sort>Invoice</th>
+              <th data-sort>Date</th>
+              <th data-sort>Customer</th>
+              <th data-sort class="text-end">Quantity (KG)</th>
+              <th data-sort class="text-end">Price/KG</th>
+              <th data-sort class="text-end">Total</th>
+              <th data-sort class="text-end">Paid</th>
+              <th data-sort class="text-end">Balance</th>
+              <th data-sort class="text-center">Status</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            {% set balance = r.total_sale - r.paid %}
+            <tr class="customer-row-accent {{ r.customer_name|customer_theme }}{% if r.deleted %} table-secondary text-muted{% endif %}">
+              <td class="text-center"><span class="table-seq-num">{{ loop.index }}</span></td>
+              <td>
+                <a href="{{url_for('transaction_history',transaction_id=r.sales_id)}}" class="sales-id-pill"><i class="bi bi-cart3 me-1"></i>{{r.sales_id}}</a>
+                {% if r.deleted %}<span class="status-pill status-pill-reversed ms-1">REVERSED</span>{% endif %}
+              </td>
+              <td><a href="{{url_for('invoice',transaction_id=r.sales_id)}}" title="Open invoice"><code>{{ r.invoice_number or 'Open invoice' }}</code></a></td>
+              <td>{{r.sale_date|short_date}}</td>
+              <td>
+                <div class="customer-chip">
+                  <span class="customer-avatar {{ r.customer_name|customer_theme }}">{{ r.customer_name|customer_initials }}</span>
+                  <strong class="text-dark">{{ r.customer_name }}</strong>
+                </div>
+              </td>
+              <td class="text-end fw-bold">{{"{:,.2f}".format(r.quantity_kg)}}</td>
+              <td class="text-end">{{ r.selling_price_kg|money }}</td>
+              <td class="text-end fw-bold">{{r.total_sale|money}}</td>
+              <td class="text-end text-success fw-bold">{{r.paid|money}}</td>
+              <td class="text-end fw-bold">{{balance|money}}</td>
+              <td class="text-center">
+                {% if r.paid > r.total_sale + 0.005 %}
+                  <span class="status-pill status-pill-overpaid"><i class="bi bi-plus-circle-fill me-1"></i>Overpaid</span>
+                {% elif balance <= 0.005 %}
+                  <span class="status-pill status-pill-paid"><i class="bi bi-check-circle-fill me-1"></i>Paid</span>
+                {% elif r.paid > 0 %}
+                  <span class="status-pill status-pill-pending"><i class="bi bi-clock-fill me-1"></i>Pending</span>
+                {% else %}
+                  <span class="status-pill status-pill-unpaid"><i class="bi bi-exclamation-circle-fill me-1"></i>Unpaid</span>
                 {% endif %}
-              </div>
-            </td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="13">
-              <div class="empty-state">
-                <i class="bi bi-cart3"></i>
-                No sales recorded yet.<br>
-                <a href="{{ url_for('sales') }}#new" class="btn btn-sm btn-primary mt-2">Create the first sale</a>
-              </div>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+              </td>
+              <td class="text-end">
+                <div class="btn-group btn-group-sm">
+                  <a class="btn btn-outline-primary" href="{{url_for('invoice',transaction_id=r.sales_id)}}" title="View invoice"><i class="bi bi-receipt"></i></a>
+                  {% if session.get('role') == 'ADMIN' %}
+                  <a class="btn btn-outline-secondary" href="{{url_for('edit_sale',sale_id=r.id)}}" title="Edit sale"><i class="bi bi-pencil"></i></a>
+                  <form class="d-inline" method="post" action="{{url_for('reverse_record_route',table='sales',record_id=r.id)}}" onsubmit="return confirm('Reverse this sale?');">
+                    {{ csrf_input() }}
+                    <button class="btn btn-outline-warning" title="Reverse sale"><i class="bi bi-arrow-counterclockwise"></i></button>
+                  </form>
+                  <button type="button" class="btn btn-outline-danger" title="Delete transaction"
+                          data-bs-toggle="modal" data-bs-target="#deleteTransactionModal"
+                          data-delete-url="{{url_for('delete_record_route',table='sales',record_id=r.id)}}"
+                          data-delete-id="{{r.transaction_id}}" data-delete-type="Sale" data-delete-party="{{r.customer_name}}"
+                          data-delete-quantity="{{'{:,.2f}'.format(r.quantity_kg)}} KG" data-delete-amount="{{r.total_sale|money}}"
+                          data-delete-date="{{r.sale_date|pretty_date}}"><i class="bi bi-trash3"></i></button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="12">
+                <div class="empty-state"><i class="bi bi-cart3"></i>{% if filtered %}No sales match these filters.{% else %}No sales recorded yet.{% endif %}<br>
+                  <a href="{{ url_for('sales') }}#new" class="btn btn-sm btn-primary mt-2">{% if filtered %}Clear filters{% else %}Create the first sale{% endif %}</a></div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination d-flex justify-content-between align-items-center mt-2"><small class="text-muted" data-page-info></small><div class="btn-group btn-group-sm"><button class="btn btn-outline-secondary" data-page-prev type="button">Prev</button><button class="btn btn-outline-secondary" data-page-next type="button">Next</button></div></div>
     </div>
     <div class="table-pagination d-flex justify-content-between align-items-center mt-2"><small class="text-muted" data-page-info></small><div class="btn-group btn-group-sm"><button class="btn btn-outline-secondary" data-page-prev type="button">Prev</button><button class="btn btn-outline-secondary" data-page-next type="button">Next</button></div></div>
   </div>
+</section>
+
+<!-- ============ ANALYTICS ============ -->
+<section id="tab-analytics" class="dx-panel" hidden>
+<div class="dx">
+  {{ period_header(sa, 'sales', 'Sales analytics', 'Revenue, profit, pricing and collections - and who is really driving them.', '#analytics') }}
+
+  {% if not sa.has_data %}
+  <section class="dx-card"><p class="dx-empty"><i class="bi bi-cart3"></i> No sales in this period. Record one, or pick a wider period.</p></section>
+  {% endif %}
+
+  <section class="dx-kpis dx-kpis-wide">
+    {{ stat('green', 'graph-up-arrow', 'Revenue', k.revenue|money, k.orders ~ (' sale' if k.orders == 1 else ' sales') ~ ' · ' ~ '{:,.0f}'.format(k.kg) ~ ' KG', sa.deltas.revenue) }}
+    {{ stat('gold', 'piggy-bank', 'Estimated profit', k.profit|money, ('%.1f%% margin'|format(k.margin * 100)) if k.margin is not none else 'No sales yet', sa.deltas.profit) }}
+    {{ stat('teal', 'tag', 'Average price', (k.avg_price|money ~ ' / KG') if k.avg_price is not none else '—', (('range ' ~ (k.min_price|money) ~ ' – ' ~ (k.max_price|money)) if k.min_price is not none else 'No sales yet'), sa.deltas.avg_price) }}
+    {{ stat('violet', 'receipt', 'Average sale', (k.avg_order|money) if k.avg_order is not none else '—', 'Revenue per sale', sa.deltas.avg_order) }}
+    {{ stat('blue', 'wallet2', 'Collected', k.settled|money, (('%.0f%% of these sales paid'|format(k.collection_rate * 100)) if k.collection_rate is not none else 'Nothing billed'), sa.deltas.settled) }}
+    {{ stat('red', 'hourglass-split', 'Still owed', k.outstanding|money, 'On sales made in this period', None) }}
+  </section>
+
+  <section class="dx-grid">
+    <div class="dx-card dx-span-8">
+      <div class="dx-card-head"><h3><i class="bi bi-bar-chart-line"></i> Revenue &amp; profit</h3><span class="dx-muted">per {{ sa.series.granularity }} · line = average price/KG</span></div>
+      <div class="dx-chart"><canvas id="saRev"></canvas></div>
+    </div>
+    <div class="dx-card dx-span-4">
+      <div class="dx-card-head"><h3><i class="bi bi-stars"></i> Sales insights</h3></div>
+      {{ insights(sa.insights, 'Insights appear as you record sales.') }}
+    </div>
+  </section>
+
+  <section class="dx-grid">
+    <div class="dx-card dx-span-6">
+      <div class="dx-card-head"><h3><i class="bi bi-arrows-expand"></i> Selling price range</h3><span class="dx-muted">cheapest, average and highest price per KG</span></div>
+      <div class="dx-chart dx-chart-sm"><canvas id="saPrice"></canvas></div>
+    </div>
+    <div class="dx-card dx-span-3">
+      <div class="dx-card-head"><h3><i class="bi bi-pie-chart"></i> Payment status</h3></div>
+      {% if sa.has_data %}<div class="dx-donut"><canvas id="saStatus"></canvas></div>
+      <ul class="dx-legend">
+        {% for m in sa.status_mix %}<li><i style="background:{{ ['#16a34a', '#f59e0b', '#dc2626'][loop.index0] }}"></i><span>{{ m.label }} ({{ m.count }})</span><strong>{{ m.amount|money }}</strong></li>{% endfor %}
+      </ul>{% else %}<p class="dx-empty"><i class="bi bi-pie-chart"></i> No sales yet.</p>{% endif %}
+    </div>
+    <div class="dx-card dx-span-3">
+      <div class="dx-card-head"><h3><i class="bi bi-people"></i> By customer type</h3></div>
+      {% if sa.customer_types %}
+      <ul class="dx-bars">
+        {% set top = sa.customer_types[0].revenue or 1 %}
+        {% for t in sa.customer_types %}
+        <li><div class="dx-bar-row"><span>{{ t.type|title }}</span><strong>{{ t.revenue|money }}</strong></div>
+          <div class="dx-bar"><span style="width:{{ (t.revenue / top * 100)|round(1) }}%"></span></div><small>{{ t.orders }} sale{{ '' if t.orders == 1 else 's' }}</small></li>
+        {% endfor %}
+      </ul>{% else %}<p class="dx-empty"><i class="bi bi-people"></i> No sales yet.</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="dx-grid">
+    <div class="dx-card dx-span-6">
+      <div class="dx-card-head"><h3><i class="bi bi-trophy"></i> Top customers</h3><span class="dx-muted">margin shown per customer</span></div>
+      {% if sa.top_customers %}
+      <ol class="dx-bars">
+        {% for c in sa.top_customers %}
+        <li>
+          <div class="dx-bar-row"><a href="{{ url_for('customer_statement', customer_id=c.id) }}">{{ c.name }}</a><strong>{{ c.revenue|money }}</strong></div>
+          <div class="dx-bar"><span style="width:{{ (c.share * 100)|round(1) }}%"></span></div>
+          <small>{{ (c.share * 100)|round(0)|int }}% of revenue · {{ c.orders }} sale{{ '' if c.orders == 1 else 's' }} · {{ '{:,.0f}'.format(c.kg) }} KG{% if c.margin is not none %} · <span class="{{ 'dx-neg' if c.margin < 0.05 }}">{{ '%.0f%%'|format(c.margin * 100) }} margin</span>{% endif %}</small>
+        </li>
+        {% endfor %}
+      </ol>{% else %}<p class="dx-empty"><i class="bi bi-people"></i> No sales in this period.</p>{% endif %}
+    </div>
+    <div class="dx-card dx-span-3">
+      <div class="dx-card-head"><h3><i class="bi bi-calendar-week"></i> By weekday</h3></div>
+      <div class="dx-chart dx-chart-sm"><canvas id="saWeekday"></canvas></div>
+    </div>
+    <div class="dx-card dx-span-3">
+      <div class="dx-card-head"><h3><i class="bi bi-rulers"></i> Order size</h3></div>
+      <div class="dx-chart dx-chart-sm"><canvas id="saSize"></canvas></div>
+    </div>
+  </section>
+
+  {% if sa.risky.examples %}
+  <section class="dx-grid">
+    <div class="dx-card dx-span-12">
+      <div class="dx-card-head"><h3><i class="bi bi-exclamation-triangle"></i> Lowest-margin sales</h3><span class="dx-muted">priced below cost or under {{ '%.0f%%'|format(5) }} margin</span></div>
+      <div class="dx-table-wrap">
+        <table class="dx-table">
+          <thead><tr><th>Sale</th><th>Customer</th><th class="dx-num">Price / KG</th><th class="dx-num">Margin</th></tr></thead>
+          <tbody>
+            {% for r in sa.risky.examples %}
+            <tr>
+              <td data-label="Sale"><a class="dx-id" href="{{ url_for('transaction_history', transaction_id=r.sales_id) }}">{{ r.sales_id }}</a></td>
+              <td data-label="Customer"><strong>{{ r.customer }}</strong><small>{{ r.date|short_date }}</small></td>
+              <td data-label="Price / KG" class="dx-num">{{ r.price|money }}</td>
+              <td data-label="Margin" class="dx-num"><span class="dx-pill {{ 'dx-pill-bad' if r.margin is not none and r.margin < 0 else 'dx-pill-warn' }}">{{ ('%.1f%%'|format(r.margin * 100)) if r.margin is not none else '—' }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+  <p class="dx-foot">Profit uses your weighted-average purchase cost. Reversed and deleted sales are excluded.</p>
 </div>
+</section>
 </div>
+
+<script id="saData" type="application/json">{{ {'series': sa.series, 'status': sa.status_mix, 'weekday': sa.patterns.weekday, 'sizes': sa.patterns.sizes, 'memory': memory, 'targets': sa.pricing.targets}|tojson }}</script>
 {% endblock %}
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/dx.js') }}"></script>
+{% set filtered = filters.values()|select|list|length > 0 %}
 <script>
-function onSelectExistingCustomer(sel) {
-  var opt = sel.options[sel.selectedIndex];
-  if (!opt || !opt.value) {
-    document.getElementById("selectedCustomerId").value = "";
-    return;
+(function () {
+  const data = JSON.parse(document.getElementById('saData').textContent), mem = data.memory, cust = mem.customers;
+  const $ = s => document.querySelector(s);
+  const num = name => parseFloat($('[name="' + name + '"]')?.value) || 0;
+  const gh = v => 'GH₵' + Number(v).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const pct = v => (v * 100).toFixed(1) + '%';
+
+  const tabsApi = DX.tabs({
+    initial: {{ ('ledger' if related_purchase else 'analytics' if analytics_requested else 'ledger' if filtered else '')|tojson }},
+    onFirstShow: { analytics: initCharts },
+  });
+
+  /* ---- customer picking (unchanged behaviour) ---- */
+  window.onSelectExistingCustomer = function (sel) {
+    const opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) { $('#selectedCustomerId').value = ''; customerChanged(); return; }
+    $('#selectedCustomerId').value = opt.value;
+    $('#customerNameInput').value = opt.getAttribute('data-name') || '';
+    $('#customerPhoneInput').value = opt.getAttribute('data-phone') || '';
+    customerChanged();
+  };
+
+  function currentCustomer() {
+    const id = $('#selectedCustomerId').value;
+    if (id && cust[id]) return cust[id];
+    const typed = $('#customerNameInput').value.trim().toLowerCase();
+    if (!typed) return null;
+    const opt = Array.from($('#registeredCustomerSelect').options).find(o => o.value && (o.dataset.name || '').toLowerCase() === typed);
+    return opt ? cust[opt.value] || null : null;
   }
-  document.getElementById("selectedCustomerId").value = opt.value;
-  document.getElementById("customerNameInput").value = opt.getAttribute("data-name") || "";
-  document.getElementById("customerPhoneInput").value = opt.getAttribute("data-phone") || "";
-}
-function saleNumber(name){return parseFloat(document.querySelector('[name="'+name+'"]')?.value)||0}
-function updateSaleTotal(){document.getElementById('saleTotal').textContent='GH₵'+(saleNumber('quantity_kg')*saleNumber('selling_price_kg')).toLocaleString('en-GH',{minimumFractionDigits:2,maximumFractionDigits:2})}
-document.querySelectorAll('.smart-form input').forEach(input=>input.addEventListener('input',updateSaleTotal));
-updateSaleTotal();
-document.querySelector('.smart-form')?.addEventListener('submit',function(){const submit=this.querySelector('button[type="submit"],button:not([type])');if(submit){submit.disabled=true;submit.innerHTML='<i class="bi bi-hourglass-split me-1"></i> Saving sale...';}});
+
+  function quickButtons(el, items, field, cls) {
+    el.innerHTML = items.map(i => '<button type="button" class="dx-quickbtn ' + (cls || '') + '" data-v="' + i.value + '" title="' + i.title + '">' + i.label + '</button>').join('');
+    el.hidden = !items.length;
+    el.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { const f = $('[name="' + field + '"]'); f.value = b.dataset.v; f.dispatchEvent(new Event('input', { bubbles: true })); }));
+  }
+
+  function customerChanged() {
+    const c = currentCustomer(), hint = $('#customerHint');
+    const prices = [];
+    if (c && c.last_price) prices.push({ value: c.last_price, label: 'Last ' + c.last_price.toFixed(2), title: 'Price this customer paid last time' });
+    if (mem.market_price) prices.push({ value: mem.market_price.toFixed(2), label: 'Avg ' + mem.market_price.toFixed(2), title: 'Your average price, last 30 days' });
+    (data.targets || []).forEach(t => prices.push({ value: t.price.toFixed(2), label: '+' + Math.round(t.margin * 100) + '% → ' + t.price.toFixed(2), title: 'Price for a ' + Math.round(t.margin * 100) + '% margin', cls: 'dx-quickbtn-margin' }));
+    quickButtons($('#priceQuick'), prices, 'selling_price_kg');
+    quickButtons($('#qtyQuick'), c && c.usual_qty ? [{ value: c.usual_qty, label: 'Usual ' + c.usual_qty.toLocaleString() + ' KG', title: 'Their typical order size' }] : [], 'quantity_kg');
+    if (!c || (!c.orders && !c.owed)) { hint.hidden = true; update(); return; }
+    hint.hidden = false;
+    const parts = [];
+    if (c.orders) parts.push(c.orders + ' past order' + (c.orders === 1 ? '' : 's') + (c.last_date ? ', last on ' + c.last_date : ''));
+    if (c.last_price) parts.push('last price <strong>' + gh(c.last_price) + '/KG</strong>');
+    if (c.owed > 0.005) parts.push('<strong class="dx-neg">owes ' + gh(c.owed) + '</strong>' + (c.oldest ? ' (oldest ' + c.oldest + ' days)' : ''));
+    hint.innerHTML = '<i class="bi bi-person-lines-fill"></i> ' + parts.join(' · ');
+    update();
+  }
+  $('#customerNameInput').addEventListener('change', customerChanged);
+  $('#customerNameInput').addEventListener('input', () => { if (!$('#customerNameInput').value) $('#selectedCustomerId').value = ''; });
+
+  /* ---- live sale check ---- */
+  const flag = (level, icon, text) => '<li class="dx-flag dx-flag-' + level + '"><i class="bi bi-' + icon + '"></i><span>' + text + '</span></li>';
+  function update() {
+    const q = num('quantity_kg'), price = num('selling_price_kg'), total = q * price, cost = mem.unit_cost;
+    $('#saleTotal').textContent = gh(total);
+    const facts = $('#checkFacts'), flags = $('#checkFlags');
+    if (!(q > 0 && price > 0)) { facts.hidden = true; $('#checkEmpty').hidden = false; flags.innerHTML = ''; return; }
+    $('#checkEmpty').hidden = true; facts.hidden = false;
+    const profit = cost > 0 ? total - q * cost : null, margin = profit !== null && total > 0 ? profit / total : null, left = mem.stock - q;
+    const c = currentCustomer(), owe = (c ? c.owed : 0) + total;
+    $('#ckTotal').textContent = gh(total);
+    $('#ckStock').textContent = left.toLocaleString(undefined, { maximumFractionDigits: 0 }) + ' KG';
+    $('#ckProfit').textContent = profit === null ? 'needs a purchase' : gh(profit);
+    $('#ckMargin').textContent = margin === null ? '—' : pct(margin);
+    $('#ckOwe').textContent = gh(owe);
+    const out = [];
+    if (q > mem.stock) out.push(flag('bad', 'x-octagon', 'Not enough stock: you only have ' + mem.stock.toLocaleString(undefined, { maximumFractionDigits: 0 }) + ' KG.'));
+    else if (left <= mem.low_stock) out.push(flag('warn', 'box-seam', 'This leaves ' + left.toLocaleString(undefined, { maximumFractionDigits: 0 }) + ' KG, at or below your low-stock level.'));
+    if (cost > 0 && price < cost) out.push(flag('bad', 'exclamation-octagon', 'Below your cost of ' + gh(cost) + '/KG. You lose ' + gh(q * (cost - price)) + ' on this sale.'));
+    else if (margin !== null && margin < 0.08) out.push(flag('warn', 'percent', 'Very thin margin (' + pct(margin) + '). Consider a higher price.'));
+    if (c && c.last_price) { const d = (price - c.last_price) / c.last_price; if (Math.abs(d) >= 0.05) out.push(flag(d > 0 ? 'info' : 'warn', d > 0 ? 'graph-up-arrow' : 'graph-down-arrow', 'Price is ' + pct(Math.abs(d)) + (d > 0 ? ' above' : ' below') + ' what they paid last time (' + gh(c.last_price) + ').')); }
+    if (mem.market_price) { const d = (price - mem.market_price) / mem.market_price; if (d <= -0.08) out.push(flag('warn', 'tag', 'That is ' + pct(-d) + ' under your 30-day average price.')); }
+    if (c && c.owed > 0.005 && c.oldest > 30) out.push(flag('warn', 'hourglass-split', 'This customer already owes ' + gh(c.owed) + ', oldest ' + c.oldest + ' days. Consider collecting before selling more on credit.'));
+    else if (c && c.owed > 0.005) out.push(flag('info', 'cash-coin', 'They still owe ' + gh(c.owed) + ' from earlier sales.'));
+    if (c && c.usual_qty && q > c.usual_qty * 2.5) out.push(flag('info', 'box-seam', 'Much bigger than their usual order (~' + c.usual_qty.toLocaleString() + ' KG).'));
+    if (!out.length) out.push(flag('good', 'check-circle', 'Looks good: healthy margin, stock available.'));
+    flags.innerHTML = out.join('');
+  }
+  document.querySelectorAll('#saleForm input').forEach(i => i.addEventListener('input', update));
+  $('#saleForm').addEventListener('submit', function () { const b = this.querySelector('button[type="submit"]'); if (b) { b.disabled = true; b.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Saving...'; } });
+  customerChanged(); update();
+
+  /* ---- analytics charts (built on first view) ---- */
+  function initCharts() {
+    const { make, scales, money, num: n0, dark } = DX;
+    const s = data.series;
+    make('saRev', { type: 'bar', data: { labels: s.labels, datasets: [
+        { label: 'Revenue', data: s.revenue, backgroundColor: 'rgba(22,163,74,0.75)', borderRadius: 4, order: 2 },
+        { label: 'Profit', data: s.profit, backgroundColor: 'rgba(37,99,235,0.75)', borderRadius: 4, order: 2 },
+        { label: 'Avg price / KG', data: s.avg_price, type: 'line', yAxisID: 'y2', borderColor: '#d97706', tension: 0.3, borderWidth: 2.5, pointRadius: 3, spanGaps: true, order: 1 }] },
+      options: { scales: scales({ y2: { position: 'right', beginAtZero: false, grid: { display: false }, ticks: { color: DX.ink(), callback: v => Number(v).toFixed(2) } } }),
+        plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + (c.dataset.yAxisID === 'y2' ? money(c.parsed.y) + '/KG' : money(c.parsed.y)) } } } } });
+    make('saPrice', { type: 'line', data: { labels: s.labels, datasets: [
+        { label: 'Highest', data: s.max_price, borderColor: 'rgba(22,163,74,0.5)', backgroundColor: 'rgba(22,163,74,0.10)', fill: '+1', tension: 0.3, borderWidth: 1.5, pointRadius: 2, spanGaps: true },
+        { label: 'Lowest', data: s.min_price, borderColor: 'rgba(220,38,38,0.6)', tension: 0.3, borderWidth: 1.5, pointRadius: 2, spanGaps: true },
+        { label: 'Average', data: s.avg_price, borderColor: '#16a34a', tension: 0.3, borderWidth: 2.75, pointRadius: 3, spanGaps: true }] },
+      options: { scales: scales({ y: { beginAtZero: false, grid: { color: DX.grid() }, ticks: { color: DX.ink(), callback: v => Number(v).toFixed(2) } } }), plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + money(c.parsed.y) + '/KG' } } } } });
+    make('saStatus', { type: 'doughnut', data: { labels: data.status.map(m => m.label), datasets: [{ data: data.status.map(m => m.count), backgroundColor: ['#16a34a', '#f59e0b', '#dc2626'], borderWidth: 2, borderColor: dark() ? '#182820' : '#fff' }] },
+      options: { cutout: '66%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.label + ': ' + c.parsed + ' sales' } } } } });
+    make('saWeekday', { type: 'bar', data: { labels: data.weekday.map(x => x.day.slice(0, 3)), datasets: [{ label: 'Revenue', data: data.weekday.map(x => x.revenue), backgroundColor: 'rgba(22,163,74,0.75)', borderRadius: 4 }] },
+      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => money(c.parsed.y) + ' · ' + data.weekday[c.dataIndex].orders + ' orders' } } }, scales: scales() } });
+    make('saSize', { type: 'bar', data: { labels: data.sizes.map(x => x.band.replace(' KG', '').replace('and over', '+')), datasets: [{ label: 'Orders', data: data.sizes.map(x => x.orders), backgroundColor: 'rgba(124,58,237,0.72)', borderRadius: 4 }] },
+      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.parsed.y + ' orders · ' + money(data.sizes[c.dataIndex].revenue) } } }, scales: scales() } });
+  }
+})();
 </script>
 {% endblock %}

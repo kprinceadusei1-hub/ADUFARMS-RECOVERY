@@ -22,6 +22,16 @@ except Exception:
     pass
 
 import stock_service as stock_svc
+import dashboard_service
+import analytics_service
+import purchases_service
+import sales_service
+import customers_service
+import payments_service
+import inventory_service
+import invoices_service
+import audit_service
+import alerts_service
 import backup_service as backup_svc
 import assistant_service
 
@@ -32,6 +42,10 @@ EXPORT_DIR = BASE_DIR / "exports" / "invoices"
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 PROFILE_DIR = BASE_DIR / "static" / "images" / "users"
 PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    LOW_STOCK_KG = float(os.environ.get("ADUFARMS_LOW_STOCK_KG", "1000"))
+except ValueError:
+    LOW_STOCK_KG = 1000.0
 DASHBOARD_IMAGE_DIR = BASE_DIR / "static" / "images" / "dashboard" / "custom"
 DASHBOARD_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 BACKUP_DIR = BASE_DIR / "backups"
@@ -164,7 +178,7 @@ def init_db():
     # Backup before migrations (never silently overwrite the only backup)
     if DB_PATH.exists() and DB_PATH.stat().st_size > 0:
         try:
-            backup_svc.create_backup(str(DB_PATH))
+            backup_svc.create_backup(str(DB_PATH), skip_if_unchanged=True)
         except Exception:
             app.logger.exception("Pre-migration backup failed")
     conn = db()
@@ -493,6 +507,8 @@ def security_context():
         conn.close()
         if stock <= 0:
             notifications.append(("Stock depleted", "No available maize stock remains.", "danger", "box-seam"))
+        elif stock <= LOW_STOCK_KG:
+            notifications.append(("Stock is low", f"{stock:,.0f} KG left.", "warning", "exclamation-triangle"))
         if unpaid:
             notifications.append((f"{unpaid} unpaid balance" if unpaid != 1 else "1 unpaid balance", "Review customer balances.", "warning", "exclamation-circle"))
         if latest:
@@ -501,6 +517,7 @@ def security_context():
 
 
 app.jinja_env.globals.update(csrf_input=csrf_input, csrf_token=csrf_token)
+app.jinja_env.globals["user_can"] = lambda permission: user_has_permission(permission)
 
 
 @app.before_request
@@ -569,7 +586,13 @@ def valid_date(value, field_name):
 
 
 def normalized_phone(value):
-    return "".join(char for char in str(value or "") if char.isdigit())
+    """Digits only, with Ghana's international prefix folded into the local form (+233 24 412 3456 == 024 412 3456)."""
+    digits = "".join(char for char in str(value or "") if char.isdigit())
+    if digits.startswith("00233"):
+        digits = "0" + digits[5:]
+    elif digits.startswith("233") and len(digits) >= 11:
+        digits = "0" + digits[3:]
+    return digits
 
 
 def normalized_customer_name(value):
@@ -639,7 +662,7 @@ ROLE_PERMISSIONS = {
         "view_purchases", "create_purchases", "edit_purchases", "delete_purchases",
         "view_inventory", "manage_inventory",
         "view_invoices", "create_invoices", "print_invoices", "download_invoices",
-        "view_reports", "export_reports",
+        "view_reports", "export_reports", "view_analytics",
         "view_payments", "manage_payments",
         "view_profiles", "edit_profile",
     },
@@ -650,7 +673,7 @@ ROLE_PERMISSIONS = {
         "view_purchases", "create_purchases", "edit_purchases",
         "view_inventory", "manage_inventory",
         "view_invoices", "create_invoices", "print_invoices",
-        "view_reports", "export_reports",
+        "view_reports", "export_reports", "view_analytics",
         "view_payments", "manage_payments",
         "view_profiles", "edit_profile",
     },
@@ -673,7 +696,7 @@ ROLE_PERMISSIONS = {
         "view_dashboard", "view_sales", "view_customers", "view_purchases",
         "view_invoices", "print_invoices", "download_invoices",
         "view_payments", "manage_payments",
-        "view_reports", "export_reports",
+        "view_reports", "export_reports", "view_analytics",
         "view_profiles", "edit_profile",
     },
     "VIEWER": {
@@ -971,6 +994,12 @@ def visible_sql(alias):
     return "1=1" if can_see_deleted() else f"{alias}.deleted=0"
 
 
+def send_csv(buffer, filename):
+    """Download an in-memory CSV (Excel-friendly UTF-8 with BOM)."""
+    return send_file(io.BytesIO(buffer.getvalue().encode("utf-8-sig")), as_attachment=True,
+                     download_name=filename, mimetype="text/csv")
+
+
 def actor_label():
     return f"{session.get('username')} (id={session.get('user_id')})"
 
@@ -1207,6 +1236,18 @@ def pretty_date(v):
     return stamp
 
 
+@app.template_filter("short_date")
+def short_date(v):
+    """Compact date for table cells, e.g. '27 Sep 2026'."""
+    if v is None or str(v).strip() == "":
+        return "-"
+    try:
+        parsed = datetime.strptime(str(v).strip()[:10], "%Y-%m-%d")
+    except ValueError:
+        return str(v).strip()
+    return f"{parsed.day} {parsed.strftime('%b %Y')}"
+
+
 CUSTOMER_COLOR_THEMES = [
     "emerald", "cobalt", "amber", "amethyst",
     "teal", "terracotta", "slate", "ruby"
@@ -1424,151 +1465,23 @@ def logout():
 def dashboard():
     purchased, sold, stock = stock_summary()
     conn = db()
-    today = date.today().isoformat()
-    month_start = date.today().replace(day=1).isoformat()
-
-    summary_row = conn.execute("""
-        WITH sales_summary AS (
-            SELECT
-                COALESCE(SUM(CASE WHEN deleted=0 THEN total_sale ELSE 0 END), 0) AS sales_total,
-                COUNT(CASE WHEN deleted=0 THEN 1 END) AS transactions_count,
-                COALESCE(SUM(CASE WHEN deleted=0 AND sale_date=? THEN total_sale ELSE 0 END), 0) AS today_sales,
-                COALESCE(SUM(CASE WHEN deleted=0 AND sale_date>=? THEN total_sale ELSE 0 END), 0) AS month_sales
-            FROM sales
-        ),
-        payments_summary AS (
-            SELECT
-                COALESCE(SUM(CASE WHEN deleted=0 THEN amount ELSE 0 END), 0) AS payments_total,
-                COALESCE(SUM(CASE WHEN deleted=0 AND payment_date=? THEN amount ELSE 0 END), 0) AS today_payments,
-                COALESCE(SUM(CASE WHEN deleted=0 AND payment_date>=? THEN amount ELSE 0 END), 0) AS month_payments
-            FROM payments
-        ),
-        purchases_summary AS (
-            SELECT
-                COALESCE(SUM(CASE WHEN deleted=0 THEN quantity_received_kg ELSE 0 END), 0) AS purchased_kg,
-                COALESCE(SUM(CASE WHEN deleted=0 THEN total_purchase_cost ELSE 0 END), 0) AS purchase_cost_total,
-                COALESCE(SUM(CASE WHEN deleted=0 THEN transport_cost ELSE 0 END), 0) AS transport_total,
-                COALESCE(SUM(CASE WHEN deleted=0 THEN other_expenses ELSE 0 END), 0) AS other_total,
-                COUNT(DISTINCT CASE WHEN deleted=0 THEN local_agent END) AS supplier_count
-            FROM purchases
-        ),
-        customer_summary AS (
-            SELECT
-                COALESCE(SUM(CASE WHEN active=1 THEN opening_balance ELSE 0 END), 0) AS opening_balances,
-                COUNT(CASE WHEN active=1 THEN 1 END) AS customers_count
-            FROM customers
-        )
-        SELECT
-            pus.purchased_kg,
-            ss.sales_total,
-            pms.payments_total,
-            cs.opening_balances,
-            cs.customers_count,
-            ss.transactions_count,
-            pus.purchase_cost_total,
-            pus.transport_total,
-            pus.other_total,
-            pus.supplier_count,
-            ss.today_sales,
-            pms.today_payments,
-            ss.month_sales,
-            pms.month_payments
-        FROM sales_summary ss
-        CROSS JOIN payments_summary pms
-        CROSS JOIN purchases_summary pus
-        CROSS JOIN customer_summary cs
-    """, (today, month_start, today, month_start)).fetchone()
-
-    sale_payment_totals = conn.execute("""
-        SELECT s.transaction_id, s.total_sale,
-               COALESCE(SUM(p.amount),0) AS total_paid
-        FROM sales s
-        LEFT JOIN payments p ON p.transaction_id=s.transaction_id AND p.deleted=0
-        WHERE s.deleted=0
-        GROUP BY s.transaction_id, s.total_sale
-    """).fetchall()
-
-    paid = 0
-    part = 0
-    sale_outstanding = 0.0
-    for row in sale_payment_totals:
-        total_sale = float(row["total_sale"] or 0)
-        total_paid = float(row["total_paid"] or 0)
-        if total_paid >= total_sale - 0.005:
-            paid += 1
-        elif total_paid > 0:
-            part += 1
-        sale_outstanding += max(total_sale - total_paid, 0.0)
-
-    sales = float(summary_row["sales_total"] or 0)
-    payments = float(summary_row["payments_total"] or 0)
-    opening_balances = float(summary_row["opening_balances"] or 0)
-    purchase_cost = float(summary_row["purchase_cost_total"] or 0)
-    transport = float(summary_row["transport_total"] or 0)
-    other = float(summary_row["other_total"] or 0)
-    customers = int(summary_row["customers_count"] or 0)
-    transactions = int(summary_row["transactions_count"] or 0)
-    unpaid = max(transactions - paid - part, 0)
-    outstanding = max(float(opening_balances), 0) + float(sale_outstanding)
-    expenses = float(purchase_cost) + float(transport) + float(other)
-    cost_summary = cogs_summary(conn)
-    profit = float(sales) - float(cost_summary["cogs"])
-
-    recent = conn.execute("""SELECT s.sales_id transaction_id,s.sales_id,s.sale_date,c.name,s.quantity_kg,s.total_sale,
-        COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.transaction_id=s.transaction_id AND p.deleted=0),0) paid
-        FROM sales s JOIN customers c ON c.id=s.customer_id WHERE s.deleted=0 ORDER BY s.id DESC LIMIT 8""").fetchall()
-    recent_purchases = conn.execute("""SELECT purchase_id,purchase_date,local_agent,quantity_received_kg,total_cost
-        FROM purchases WHERE deleted=0 ORDER BY id DESC LIMIT 6""").fetchall()
-    recent_payments = conn.execute("""SELECT p.payment_id,p.transaction_id,s.sales_id,p.payment_date,p.amount,p.payment_method,c.name customer_name
-        FROM payments p JOIN sales s ON s.transaction_id=p.transaction_id JOIN customers c ON c.id=s.customer_id
-        WHERE p.deleted=0 AND s.deleted=0 ORDER BY p.id DESC LIMIT 6""").fetchall()
-    recent_invoices = conn.execute("""SELECT i.invoice_number,s.sales_id,i.invoice_date,c.name customer_name
-        FROM invoices i JOIN sales s ON s.transaction_id=i.transaction_id JOIN customers c ON c.id=s.customer_id
-        WHERE s.deleted=0 ORDER BY i.id DESC LIMIT 6""").fetchall()
-    outstanding_customers = conn.execute("""SELECT c.id,c.name,c.phone,
-        COALESCE(SUM(s.total_sale),0) + c.opening_balance total_sales,
-        COALESCE((SELECT SUM(p.amount) FROM payments p JOIN sales ps ON ps.transaction_id=p.transaction_id
-                  WHERE ps.customer_id=c.id AND ps.deleted=0 AND p.deleted=0),0) total_paid
-        FROM customers c LEFT JOIN sales s ON s.customer_id=c.id AND s.deleted=0
-        GROUP BY c.id HAVING total_sales-total_paid > 0.005 ORDER BY total_sales-total_paid DESC LIMIT 8""").fetchall()
-    monthly_sales = [dict(row) for row in conn.execute("""SELECT substr(sale_date,1,7) month,COALESCE(SUM(total_sale),0) revenue,
-        COALESCE(SUM(quantity_kg),0) quantity FROM sales WHERE deleted=0 GROUP BY month ORDER BY month DESC LIMIT 6""").fetchall()]
-    monthly_purchases = [dict(row) for row in conn.execute("""SELECT substr(purchase_date,1,7) month,COALESCE(SUM(total_cost),0) cost,
-        COALESCE(SUM(quantity_received_kg),0) quantity FROM purchases WHERE deleted=0 GROUP BY month ORDER BY month DESC LIMIT 6""").fetchall()]
-    supplier_count = int(summary_row["supplier_count"] or 0)
-    today_sales = float(summary_row["today_sales"] or 0)
-    today_payments = float(summary_row["today_payments"] or 0)
-    month_sales = float(summary_row["month_sales"] or 0)
-    month_payments = float(summary_row["month_payments"] or 0)
-    pending_invoices = conn.execute("""SELECT COUNT(*) v FROM sales s WHERE s.deleted=0 AND
-        COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.transaction_id=s.transaction_id AND p.deleted=0),0) < s.total_sale""").fetchone()["v"]
-    recent_customers = conn.execute("""SELECT c.id, c.name, c.phone, c.location, c.customer_type,
-        COALESCE(SUM(s.total_sale),0) + c.opening_balance total_purchases
-        FROM customers c LEFT JOIN sales s ON s.customer_id=c.id AND s.deleted=0
-        WHERE c.active=1
-        GROUP BY c.id ORDER BY c.id DESC LIMIT 5""").fetchall()
-    saved_dashboard_images = conn.execute("SELECT slot,filename FROM dashboard_images").fetchall()
-    conn.close()
-    stats = dict(purchased=purchased,sold=sold,stock=stock,sales=sales,payments=payments,
-                 outstanding=outstanding,purchase_cost=float(purchase_cost),transport=float(transport),
-                 other=float(other),expenses=expenses,profit=profit,customers=customers,transactions=transactions,
-                 paid=paid,part=part,unpaid=unpaid,suppliers=supplier_count,pending_invoices=pending_invoices,
-                 today_sales=today_sales,today_payments=today_payments,
-                 month_sales=month_sales,month_payments=month_payments)
+    try:
+        data = dashboard_service.build_dashboard(
+            conn, request.args.get("range"), date.today(), money, cogs_summary(conn), stock, LOW_STOCK_KG)
+        saved_dashboard_images = conn.execute("SELECT slot,filename FROM dashboard_images").fetchall()
+    finally:
+        conn.close()
     dashboard_images = dict(DASHBOARD_IMAGE_DEFAULTS)
-    normalized_saved = {}
     for row in saved_dashboard_images:
         slot_name = DASHBOARD_SLOT_ALIASES.get(row["slot"], row["slot"])
         if slot_name in ALLOWED_DASHBOARD_SLOTS:
-            normalized_saved[slot_name] = row["filename"]
-    dashboard_images.update(normalized_saved)
-    return render_template("dashboard.html", stats=stats, recent=recent,
-                           recent_purchases=recent_purchases, recent_payments=recent_payments,
-                           recent_invoices=recent_invoices, outstanding_customers=outstanding_customers,
-                           recent_customers=recent_customers,
-                           monthly_sales=monthly_sales, monthly_purchases=monthly_purchases,
-                           dashboard_images=dashboard_images,
-                           dashboard_image_slots=DASHBOARD_IMAGE_SLOT_ORDER)
+            dashboard_images[slot_name] = row["filename"]
+    can = {name: user_has_permission(permission) for name, permission in {
+        "sales": "view_sales", "payments": "view_payments", "purchases": "view_purchases", "inventory": "view_inventory",
+        "reports": "view_reports", "customers": "view_customers", "create_sales": "create_sales",
+        "record_payment": "manage_payments", "create_purchases": "create_purchases",
+        "create_customers": "create_customers"}.items()}
+    return render_template("dashboard.html", d=data, can=can, dashboard_images=dashboard_images)
 
 
 @app.route("/dashboard/settings")
@@ -1684,17 +1597,83 @@ def purchases():
         except (ValueError, sqlite3.IntegrityError) as error:
             flash(str(error) if isinstance(error, ValueError) else "The purchase could not be saved.", "danger")
     blocked_purchase = request.args.get("blocked_purchase", type=int)
+    where, params, filters = purchase_filters()
+    today_d = date.today()
     conn = db()
-    rows = conn.execute(f"SELECT p.* FROM purchases p WHERE {visible_sql('p')} ORDER BY p.id DESC LIMIT 100").fetchall()
-    blocked_purchase_row = None
-    if blocked_purchase:
-        blocked_purchase_row = conn.execute(
-            "SELECT id,purchase_id,purchase_date,local_agent,quantity_received_kg,total_cost FROM purchases WHERE id=?",
-            (blocked_purchase,)
-        ).fetchone()
-    conn.close()
-    return render_template("purchases.html", rows=rows, today=date.today().isoformat(),
-                           blocked_purchase=blocked_purchase_row)
+    try:
+        rows = conn.execute(
+            f"SELECT p.* FROM purchases p WHERE {where} ORDER BY p.purchase_date DESC, p.id DESC LIMIT 300", params).fetchall()
+        totals = conn.execute(
+            f"""SELECT COUNT(*) n, COALESCE(SUM(p.total_cost),0) spend, COALESCE(SUM(p.quantity_received_kg),0) kg
+                FROM purchases p WHERE {where} AND p.deleted=0""", params).fetchone()
+        blocked_purchase_row = None
+        if blocked_purchase:
+            blocked_purchase_row = conn.execute(
+                "SELECT id,purchase_id,purchase_date,local_agent,quantity_received_kg,total_cost FROM purchases WHERE id=?",
+                (blocked_purchase,)).fetchone()
+        supplier_names = [r["local_agent"] for r in conn.execute(
+            "SELECT DISTINCT local_agent FROM purchases WHERE deleted=0 ORDER BY local_agent COLLATE NOCASE").fetchall()]
+        _, _, stock_kg = stock_summary()
+        pace = purchases_service.sales_pace(conn, today_d)
+        analytics_data = purchases_service.build_purchase_analytics(
+            conn, request.args.get("range"), today_d, money, stock_kg, LOW_STOCK_KG, pace,
+            request.args.get("from"), request.args.get("to"))
+        form_memory = purchases_service.supplier_index(conn, today_d)
+    finally:
+        conn.close()
+    return render_template("purchases.html", rows=rows, today=today_d.isoformat(), blocked_purchase=blocked_purchase_row,
+                           pa=analytics_data, form_memory=form_memory, supplier_names=supplier_names, filters=filters,
+                           ledger_totals=totals, can_export=user_has_permission("export_reports"),
+                           analytics_requested=any(k in request.args for k in ("range", "from", "to")))
+
+
+def purchase_filters():
+    """Ledger filters from the query string -> (sql where clause, params, echo dict for the form)."""
+    q = (request.args.get("q") or "").strip()
+    supplier = (request.args.get("supplier") or "").strip()
+    pfrom, pto = (request.args.get("pfrom") or "").strip(), (request.args.get("pto") or "").strip()
+    clauses, params = [visible_sql("p")], []
+    if q:
+        clauses.append("(p.purchase_id LIKE ? OR p.local_agent LIKE ? OR p.location LIKE ?)")
+        params += [f"%{q}%"] * 3
+    if supplier:
+        clauses.append("p.local_agent = ?")
+        params.append(supplier)
+    for value, op in ((pfrom, ">="), (pto, "<=")):
+        if value:
+            try:
+                datetime.strptime(value, "%Y-%m-%d")
+            except ValueError:
+                continue
+            clauses.append(f"p.purchase_date {op} ?")
+            params.append(value)
+    return " AND ".join(clauses), params, {"q": q, "supplier": supplier, "pfrom": pfrom, "pto": pto}
+
+
+@app.route("/purchases/export")
+@login_required
+@require_permission("view_purchases")
+@require_permission("export_reports")
+def purchases_export():
+    where, params, _ = purchase_filters()
+    conn = db()
+    try:
+        rows = conn.execute(f"SELECT p.* FROM purchases p WHERE {where} ORDER BY p.purchase_date DESC, p.id DESC", params).fetchall()
+    finally:
+        conn.close()
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(["Purchase ID", "Date", "Supplier", "Phone", "Location", "KG purchased", "KG received", "Loss KG", "Loss %",
+                     "Price per KG", "Goods cost", "Transport", "Other", "Total cost", "Landed cost per KG", "Status", "Recorded by"])
+    for r in rows:
+        bought, got = float(r["quantity_kg"]), float(r["quantity_received_kg"])
+        writer.writerow([r["purchase_id"], r["purchase_date"], r["local_agent"], r["agent_phone"], r["location"], f"{bought:.2f}", f"{got:.2f}",
+                         f"{max(bought - got, 0):.2f}", f"{(max(bought - got, 0) / bought):.4f}" if bought else "", f"{float(r['price_per_kg']):.3f}",
+                         f"{float(r['total_purchase_cost']):.2f}", f"{float(r['transport_cost']):.2f}", f"{float(r['other_expenses']):.2f}",
+                         f"{float(r['total_cost']):.2f}", f"{float(r['total_cost']) / got:.3f}" if got > 0 else "",
+                         "REVERSED" if r["deleted"] else "RECEIVED", r["staff_user"]])
+    log_action("PURCHASES EXPORTED", "PURCHASES", f"rows={len(rows)}")
+    return send_csv(buffer, f"adufarms-purchases-{date.today().isoformat()}.csv")
 
 
 @app.route("/sales", methods=["GET","POST"])
@@ -1771,41 +1750,78 @@ def sales():
     selected_customer = request.args.get("customer_id", type=int)
     page = max(int(request.args.get("page", 1) or 1), 1)
     per_page = 80
+    where, params, filters = sales_service.sales_filters(request.args, visible_sql)
+    today_d = date.today()
     conn = db()
-    selected_customer_row = conn.execute(
-        "SELECT id,name,phone,location,address,customer_type FROM customers WHERE id=? AND active=1",
-        (selected_customer,)
-    ).fetchone() if selected_customer else None
-    all_customers = conn.execute(
-        "SELECT id,name,phone,location,address,customer_type FROM customers WHERE active=1 ORDER BY name ASC"
-    ).fetchall()
-    related_purchase_row = None
-    sales_filter = ""
-    sales_params = []
-    if related_purchase:
-        related_purchase_row = conn.execute(
-            "SELECT purchase_id,purchase_date,local_agent FROM purchases WHERE id=?",
-            (related_purchase,)
-        ).fetchone()
-        if related_purchase_row:
-            sales_filter = " AND s.sale_date >= ?"
-            sales_params.append(related_purchase_row["purchase_date"])
-    total_sales = conn.execute(f"SELECT COUNT(*) AS c FROM sales s WHERE {visible_sql('s')} {sales_filter}", sales_params).fetchone()["c"]
-    page_count = max((total_sales + per_page - 1) // per_page, 1)
-    page = min(page, page_count)
-    offset = (page - 1) * per_page
-    rows = conn.execute(f"""SELECT s.*,c.name customer_name,c.phone,
-        COALESCE(s.invoice_number, i.invoice_number) invoice_number,
-        COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.transaction_id=s.transaction_id AND p.deleted=0),0) paid
-        FROM sales s JOIN customers c ON c.id=s.customer_id LEFT JOIN invoices i ON i.transaction_id=s.transaction_id AND i.deleted=0
-        WHERE {visible_sql('s')} {sales_filter}
-        ORDER BY s.sale_date ASC, s.id ASC LIMIT ? OFFSET ?""", [*sales_params, per_page, offset]).fetchall()
-    conn.close()
-    _, _, stock = stock_summary()
-    return render_template("sales.html", rows=rows, stock=stock, today=date.today().isoformat(),
+    try:
+        selected_customer_row = conn.execute(
+            "SELECT id,name,phone,location,address,customer_type FROM customers WHERE id=? AND active=1",
+            (selected_customer,)).fetchone() if selected_customer else None
+        all_customers = conn.execute(
+            "SELECT id,name,phone,location,address,customer_type FROM customers WHERE active=1 ORDER BY name ASC").fetchall()
+        related_purchase_row = None
+        if related_purchase:
+            related_purchase_row = conn.execute(
+                "SELECT purchase_id,purchase_date,local_agent FROM purchases WHERE id=?", (related_purchase,)).fetchone()
+            if related_purchase_row:
+                where += " AND s.sale_date >= ?"
+                params = [*params, related_purchase_row["purchase_date"]]
+        joined = "FROM sales s JOIN customers c ON c.id=s.customer_id"
+        total_sales = conn.execute(f"SELECT COUNT(*) AS c {joined} WHERE {where}", params).fetchone()["c"]
+        page_count = max((total_sales + per_page - 1) // per_page, 1)
+        page = min(page, page_count)
+        rows = conn.execute(f"""SELECT s.*,c.name customer_name,c.phone,
+            COALESCE(s.invoice_number, i.invoice_number) invoice_number,
+            COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.transaction_id=s.transaction_id AND p.deleted=0),0) paid
+            {joined} LEFT JOIN invoices i ON i.transaction_id=s.transaction_id AND i.deleted=0
+            WHERE {where} ORDER BY s.sale_date DESC, s.id DESC LIMIT ? OFFSET ?""",
+            [*params, per_page, (page - 1) * per_page]).fetchall()
+        ledger_totals = conn.execute(f"""SELECT COUNT(*) n, COALESCE(SUM(s.total_sale),0) revenue, COALESCE(SUM(s.quantity_kg),0) kg,
+            COALESCE(SUM((SELECT SUM(p.amount) FROM payments p WHERE p.transaction_id=s.transaction_id AND p.deleted=0)),0) paid
+            {joined} WHERE {where} AND s.deleted=0""", params).fetchone()
+        _, _, stock = stock_summary()
+        cogs = cogs_summary(conn)
+        analytics_data = sales_service.build_sales_analytics(
+            conn, request.args.get("range"), today_d, money, cogs["unit_cost"], stock, request.args.get("from"), request.args.get("to"))
+        memory = {"customers": sales_service.customer_memory(conn, today_d), "unit_cost": round(cogs["unit_cost"], 4),
+                  "stock": stock, "low_stock": LOW_STOCK_KG, "market_price": analytics_data["pricing"]["recent_avg"]}
+    finally:
+        conn.close()
+    return render_template("sales.html", rows=rows, stock=stock, today=today_d.isoformat(),
                            related_purchase=related_purchase_row, selected_customer=selected_customer_row,
                            customers=all_customers, page=page, page_count=page_count,
-                           per_page=per_page, total_sales=total_sales)
+                           per_page=per_page, total_sales=total_sales, sa=analytics_data, memory=memory, filters=filters,
+                           ledger_totals=ledger_totals, can_export=user_has_permission("export_reports"),
+                           analytics_requested=any(k in request.args for k in ("range", "from", "to")))
+
+
+@app.route("/sales/export")
+@login_required
+@require_permission("view_sales")
+@require_permission("export_reports")
+def sales_export():
+    where, params, _ = sales_service.sales_filters(request.args, visible_sql)
+    conn = db()
+    try:
+        unit_cost = cogs_summary(conn)["unit_cost"]
+        rows = conn.execute(f"""SELECT s.*, c.name customer_name, c.phone,
+            COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.transaction_id=s.transaction_id AND p.deleted=0),0) paid
+            FROM sales s JOIN customers c ON c.id=s.customer_id WHERE {where} ORDER BY s.sale_date DESC, s.id DESC""", params).fetchall()
+    finally:
+        conn.close()
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(["Sales ID", "Invoice", "Date", "Customer", "Phone", "KG", "Price per KG", "Total", "Paid", "Balance",
+                     "Status", "Estimated profit", "Margin %", "Recorded by"])
+    for r in rows:
+        total, paid, kg = float(r["total_sale"]), float(r["paid"]), float(r["quantity_kg"])
+        status = "REVERSED" if r["deleted"] else "PAID" if paid >= total - 0.005 else "PART PAID" if paid > 0.005 else "UNPAID"
+        profit = total - kg * unit_cost
+        writer.writerow([r["sales_id"], r["invoice_number"], r["sale_date"], r["customer_name"], r["phone"], f"{kg:.2f}", f"{float(r['selling_price_kg']):.3f}",
+                         f"{total:.2f}", f"{paid:.2f}", f"{max(total - paid, 0):.2f}", status, f"{profit:.2f}",
+                         f"{profit / total * 100:.1f}" if total else "", r["staff_user"]])
+    log_action("SALES EXPORTED", "SALES", f"rows={len(rows)}")
+    return send_csv(buffer, f"adufarms-sales-{date.today().isoformat()}.csv")
 
 
 @app.route("/payments", methods=["GET","POST"])
@@ -1885,39 +1901,60 @@ def payments():
             return redirect(url_for("payments"))
         except (ValueError, sqlite3.IntegrityError) as error:
             flash(str(error) if isinstance(error, ValueError) else "The payment could not be saved.", "danger")
+    where, params, filters = payments_service.payment_filters(request.args, visible_sql)
+    today_d = date.today()
     conn = db()
-    rows = conn.execute(f"""SELECT p.*, COALESCE(p.sales_id, s.sales_id) AS sales_id, c.name customer_name, c.phone, s.total_sale invoice_amount
-        FROM payments p JOIN sales s ON s.transaction_id=p.transaction_id
-        JOIN customers c ON c.id=s.customer_id WHERE {visible_sql('p')} AND {visible_sql('s')} ORDER BY p.id DESC LIMIT 100""").fetchall()
-    customers = conn.execute(
-        "SELECT id,name,phone,active FROM customers WHERE active=1 OR id=? ORDER BY active DESC,name",
-        (linked_customer_id or selected_customer_id or -1,)
-    ).fetchall()
-    outstanding_sales = conn.execute("""SELECT s.sales_id,s.customer_id,s.sale_date,s.total_sale,c.name customer_name,
-        COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.transaction_id=s.transaction_id AND p.deleted=0),0) paid
-        FROM sales s JOIN customers c ON c.id=s.customer_id
-        WHERE s.deleted=0 AND s.total_sale - COALESCE((SELECT SUM(p.amount) FROM payments p
-            WHERE p.transaction_id=s.transaction_id AND p.deleted=0),0) > 0.005
-        ORDER BY c.name,s.sale_date,s.id""").fetchall()
-    conn.close()
-    total_collected = sum(float(r["amount"]) for r in rows if not r["deleted"])
-    momo_collected = sum(float(r["amount"]) for r in rows if not r["deleted"] and 'mobile' in (r["payment_method"] or '').lower())
-    cash_collected = sum(float(r["amount"]) for r in rows if not r["deleted"] and 'cash' in (r["payment_method"] or '').lower())
-    bank_collected = sum(float(r["amount"]) for r in rows if not r["deleted"] and 'bank' in (r["payment_method"] or '').lower())
-    total_outstanding = sum(max(float(s["total_sale"]) - float(s["paid"]), 0) for s in outstanding_sales)
-    payment_metrics = {
-        "total_collected": total_collected,
-        "momo_collected": momo_collected,
-        "cash_collected": cash_collected,
-        "bank_collected": bank_collected,
-        "total_outstanding": total_outstanding,
-        "count": len([r for r in rows if not r["deleted"]])
-    }
+    try:
+        rows = conn.execute(f"""SELECT p.*, COALESCE(p.sales_id, s.sales_id) AS sale_ref, c.name customer_name, c.phone, s.total_sale invoice_amount
+            FROM payments p JOIN sales s ON s.transaction_id=p.transaction_id
+            JOIN customers c ON c.id=s.customer_id WHERE {where} ORDER BY p.payment_date DESC, p.id DESC LIMIT 300""", params).fetchall()
+        ledger_totals = conn.execute(f"""SELECT COUNT(*) n, COALESCE(SUM(p.amount),0) total
+            FROM payments p JOIN sales s ON s.transaction_id=p.transaction_id JOIN customers c ON c.id=s.customer_id
+            WHERE {where} AND p.deleted=0""", params).fetchone()
+        customers = conn.execute(
+            "SELECT id,name,phone,active FROM customers WHERE active=1 OR id=? ORDER BY active DESC,name",
+            (linked_customer_id or selected_customer_id or -1,)).fetchall()
+        outstanding_sales = conn.execute("""SELECT s.sales_id,s.customer_id,s.sale_date,s.total_sale,c.name customer_name,
+            COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.transaction_id=s.transaction_id AND p.deleted=0),0) paid
+            FROM sales s JOIN customers c ON c.id=s.customer_id
+            WHERE s.deleted=0 AND s.total_sale - COALESCE((SELECT SUM(p.amount) FROM payments p
+                WHERE p.transaction_id=s.transaction_id AND p.deleted=0),0) > 0.005
+            ORDER BY c.name,s.sale_date,s.id""").fetchall()
+        payment_metrics = payments_service.lifetime_metrics(conn)
+        analytics_data = payments_service.build_payment_analytics(
+            conn, request.args.get("range"), today_d, money, request.args.get("from"), request.args.get("to"))
+        memory = payments_service.payment_memory(conn, today_d)
+    finally:
+        conn.close()
     return render_template("payments.html", rows=rows, customers=customers,
-                           outstanding_sales=outstanding_sales, today=date.today().isoformat(),
-                           selected_customer_id=selected_customer_id,
-                           selected_sales_id=selected_sales_id,
-                           metrics=payment_metrics)
+                           outstanding_sales=outstanding_sales, today=today_d.isoformat(),
+                           selected_customer_id=selected_customer_id, selected_sales_id=selected_sales_id,
+                           metrics=payment_metrics, pa=analytics_data, memory=memory, filters=filters, ledger_totals=ledger_totals,
+                           can_export=user_has_permission("export_reports"),
+                           analytics_requested=any(k in request.args for k in ("range", "from", "to")))
+
+
+@app.route("/payments/export")
+@login_required
+@require_permission("view_payments")
+@require_permission("export_reports")
+def payments_export():
+    where, params, _ = payments_service.payment_filters(request.args, visible_sql)
+    conn = db()
+    try:
+        rows = conn.execute(f"""SELECT p.*, COALESCE(p.sales_id, s.sales_id) AS sale_ref, c.name customer_name, c.phone, s.total_sale invoice_amount
+            FROM payments p JOIN sales s ON s.transaction_id=p.transaction_id JOIN customers c ON c.id=s.customer_id
+            WHERE {where} ORDER BY p.payment_date DESC, p.id DESC""", params).fetchall()
+    finally:
+        conn.close()
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(["Payment ID", "Date", "Sales ID", "Customer", "Phone", "Amount", "Method", "Reference", "Notes", "Status", "Recorded by"])
+    for r in rows:
+        writer.writerow([r["payment_id"], r["payment_date"], r["sale_ref"], r["customer_name"], r["phone"], f"{float(r['amount']):.2f}",
+                         r["payment_method"], r["payment_reference"], r["notes"], "REVERSED" if r["deleted"] else "VERIFIED", r["staff_user"]])
+    log_action("PAYMENTS EXPORTED", "PAYMENTS", f"rows={len(rows)}")
+    return send_csv(buffer, f"adufarms-payments-{date.today().isoformat()}.csv")
 
 
 @app.route("/purchases/<int:purchase_id>/edit", methods=["GET", "POST"])
@@ -2120,24 +2157,45 @@ def customers():
     blocked_customer = request.args.get("blocked_customer", type=int)
     page = max(int(request.args.get("page", 1) or 1), 1)
     per_page = 100
-    offset = (page - 1) * per_page
     conn = db()
-    total_customers = conn.execute("SELECT COUNT(*) AS c FROM customers WHERE active=1").fetchone()["c"]
+    try:
+        insights_data = customers_service.build_customer_insights(conn, date.today(), money, cogs_summary(conn)["unit_cost"])
+        blocked_customer_row = conn.execute("SELECT id,name FROM customers WHERE id=?", (blocked_customer,)).fetchone() if blocked_customer else None
+    finally:
+        conn.close()
+    shown, filters = customers_service.directory_filters(request.args, insights_data["profiles"])
+    total_customers = len(shown)
     page_count = max((total_customers + per_page - 1) // per_page, 1)
     page = min(page, page_count)
-    offset = (page - 1) * per_page
-    rows = conn.execute("""SELECT c.*, COALESCE(SUM(s.total_sale), 0) total_sales,
-        COALESCE((SELECT SUM(p.amount) FROM payments p JOIN sales ps ON ps.transaction_id=p.transaction_id
-              WHERE ps.customer_id=c.id AND ps.deleted=0 AND p.deleted=0), 0) total_paid
-        FROM customers c LEFT JOIN sales s ON s.customer_id=c.id AND s.deleted=0
-        WHERE c.active=1 GROUP BY c.id ORDER BY c.name LIMIT ? OFFSET ?""", (per_page, offset)).fetchall()
-    blocked_customer_row = None
-    if blocked_customer:
-        blocked_customer_row = conn.execute("SELECT id,name FROM customers WHERE id=?", (blocked_customer,)).fetchone()
-    conn.close()
+    rows = shown[(page - 1) * per_page: page * per_page]
+    known = [{"id": p["id"], "name": p["name"], "phone": p["phone"] or ""} for p in insights_data["profiles"]]
     return render_template("customers.html", rows=rows, blocked_customer=blocked_customer_row,
                            page=page, page_count=page_count, per_page=per_page,
-                           total_customers=total_customers)
+                           total_customers=total_customers, ci=insights_data, filters=filters, known=known,
+                           segments=customers_service.SEGMENTS, can_export=user_has_permission("export_reports"))
+
+
+@app.route("/customers/export")
+@login_required
+@require_permission("view_customers")
+@require_permission("export_reports")
+def customers_export():
+    conn = db()
+    try:
+        data = customers_service.build_customer_insights(conn, date.today(), money, cogs_summary(conn)["unit_cost"])
+    finally:
+        conn.close()
+    shown, _ = customers_service.directory_filters(request.args, data["profiles"])
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(["Customer", "Phone", "Location", "Type", "Segment", "Orders", "Revenue", "KG", "Billed (incl. opening balance)", "Paid",
+                     "Outstanding", "Credit score", "Rating", "Days to pay", "Oldest unpaid (days)", "Last purchase", "Class"])
+    for p in shown:
+        writer.writerow([p["name"], p["phone"], p["location"], p["type"], p["segment_label"], p["orders"], f"{p['revenue']:.2f}", f"{p['kg']:.2f}",
+                         f"{p['billed']:.2f}", f"{p['paid']:.2f}", f"{p['balance']:.2f}", "" if p["score"] is None else p["score"], p["rating"],
+                         "" if p["days_to_pay"] is None else f"{p['days_to_pay']:.1f}", p["oldest_unpaid"], p["last_sale"] or "", p["abc"]])
+    log_action("CUSTOMERS EXPORTED", "CUSTOMERS", f"rows={len(shown)}")
+    return send_csv(buffer, f"adufarms-customers-{date.today().isoformat()}.csv")
 
 
 @app.route("/customers/<int:customer_id>")
@@ -2565,9 +2623,12 @@ def invoice(transaction_id=None):
              ELSE 'UNPAID' END status
         FROM sales s JOIN customers c ON c.id=s.customer_id LEFT JOIN invoices i ON i.transaction_id=s.transaction_id AND i.deleted=0
         WHERE s.deleted=0 ORDER BY s.sale_date DESC,s.id DESC LIMIT 20""").fetchall()
+    health = None
+    if not info and not (customer_query or phone_query or invoice_no or invoice_date or status_query):
+        health = invoices_service.build_invoice_health(conn, date.today(), money)
     conn.close()
     print_view = request.path.rstrip("/").endswith("/print") or request.args.get("print") in {"1", "true", "yes"}
-    return render_template("invoice.html", info=info, payments=payments_list,
+    return render_template("invoice.html", info=info, payments=payments_list, health=health,
                            invoice_matches=invoice_matches, invoice_history=invoice_history,
                            customer_query=customer_query, phone_query=phone_query,
                            invoice_no=invoice_no, invoice_date=invoice_date,
@@ -2609,7 +2670,7 @@ def invoice_pdf(transaction_id):
         try:
             with PILImage.open(logo_path) as source_logo:
                 watermark_logo = source_logo.convert("RGBA")
-                watermark_logo.thumbnail((900, 700), PILImage.Resampling.LANCZOS)
+                watermark_logo.thumbnail((600, 460), PILImage.Resampling.LANCZOS)
                 watermark_logo.putalpha(watermark_logo.getchannel("A").point(lambda value: int(value * 0.12)))
                 watermark_logo.save(watermark_buffer, format="PNG", optimize=True, compress_level=9)
             watermark_buffer.seek(0)
@@ -2633,7 +2694,20 @@ def invoice_pdf(transaction_id):
     brand = [Paragraph(f"<b>{COMPANY['legal_name']}</b>", styles["Title"]),
              Paragraph(COMPANY["service_line"].upper(), styles["Heading3"]),
              Paragraph(COMPANY["document_note"], styles["Muted"])]
-    header = Table([[Image(str(logo_path), width=30*mm, height=22*mm, kind="proportional") if logo_path.exists() else "", brand,
+    header_logo = ""
+    if logo_path.exists():
+        try:
+            # Downsample: the source logo is ~400 KB and would bloat every invoice PDF.
+            logo_buffer = io.BytesIO()
+            with PILImage.open(logo_path) as source_logo:
+                small_logo = source_logo.convert("RGB")
+                small_logo.thumbnail((360, 270), PILImage.Resampling.LANCZOS)
+                small_logo.save(logo_buffer, format="JPEG", quality=85, optimize=True)
+            logo_buffer.seek(0)
+            header_logo = Image(logo_buffer, width=30*mm, height=22*mm, kind="proportional")
+        except Exception:
+            app.logger.exception("Invoice header logo unreadable, continuing without it")
+    header = Table([[header_logo, brand,
                     [Paragraph("<b>INVOICE</b>", styles["SmallRight"]), Paragraph(info["invoice_number"], styles["SmallRight"]), Paragraph(pretty_date(info["sale_date"]), styles["SmallRight"]), Paragraph(f"<b>{info['status']}</b>", styles["SmallRight"])] ]], colWidths=[32*mm,82*mm,64*mm])
     header.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("LINEBELOW",(0,0),(-1,-1),1,colors.HexColor("#c99b2f")),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),4)]))
     story.append(header)
@@ -2819,11 +2893,59 @@ def reports():
                                  row["quantity_kg"], row["total_sale"], row["paid"],
                                  float(row["total_sale"]) - float(row["paid"])])
             filename = "adufarms-sales-report.csv"
-        return send_file(io.BytesIO(buf.getvalue().encode("utf-8-sig")), as_attachment=True,
-                         download_name=filename, mimetype="text/csv")
+        return send_csv(buf, filename)
     return render_template("reports.html", sales_rows=sales_rows, purchase_rows=purchase_rows,
                            payment_rows=payment_rows, balance_rows=balance_rows,
                            payment_total=payment_total, summary=summary, start=start, end=end)
+
+
+@app.route("/analytics")
+@login_required
+@require_permission("view_analytics")
+def analytics():
+    conn = db()
+    try:
+        data = analytics_service.build_analytics(conn, request.args.get("range"), date.today(), money, cogs_summary(conn),
+                                            request.args.get("from"), request.args.get("to"))
+    finally:
+        conn.close()
+    return render_template("analytics.html", a=data, can_export=user_has_permission("export_reports"))
+
+
+@app.route("/analytics/export/<section>")
+@login_required
+@require_permission("view_analytics")
+@require_permission("export_reports")
+def analytics_export(section):
+    conn = db()
+    try:
+        data = analytics_service.build_analytics(conn, request.args.get("range"), date.today(), money, cogs_summary(conn),
+                                            request.args.get("from"), request.args.get("to"))
+    finally:
+        conn.close()
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    if section == "customers":
+        writer.writerow(["Customer", "Phone", "Orders", "Revenue (GHS)", "KG", "Share of revenue", "Class", "Average order (GHS)",
+                         "Days to pay", "Owes (GHS)", "Last sale"])
+        for c in data["customers"]:
+            writer.writerow([c["name"], c["phone"], c["orders"], f"{c['revenue']:.2f}", f"{c['kg']:.2f}", f"{c['share']:.4f}", c["abc"],
+                             f"{c['avg_order']:.2f}", "" if c["days_to_pay"] is None else f"{c['days_to_pay']:.1f}", f"{c['owed']:.2f}", c["last_sale"]])
+    elif section == "suppliers":
+        writer.writerow(["Supplier", "Purchases", "Spend (GHS)", "KG bought", "KG received", "Loss %", "Cost per KG received (GHS)", "Last purchase"])
+        for s_ in data["suppliers"]:
+            writer.writerow([s_["name"], s_["purchases"], f"{s_['spend']:.2f}", f"{s_['bought']:.2f}", f"{s_['received']:.2f}",
+                             f"{s_['loss_pct']:.4f}", "" if s_["cost_per_kg"] is None else f"{s_['cost_per_kg']:.3f}", s_["last_buy"]])
+    elif section == "timeline":
+        t = data["timeline"]
+        writer.writerow(["Period", "Revenue", "Cost of goods", "Gross profit", "Margin %", "Sell price/KG", "Buy price/KG", "Collected", "Purchases", "Net cash", "Stock KG"])
+        for i, label in enumerate(t["labels"]):
+            writer.writerow([label, t["revenue"][i], t["cogs"][i], t["profit"][i], t["margin"][i], t["sell_price"][i], t["buy_price"][i],
+                             t["collected"][i], t["spend"][i], t["net_cash"][i], t["stock"][i]])
+    else:
+        abort(404)
+    log_action("ANALYTICS EXPORTED", section.upper(), f"range={data['range_key']}")
+    return send_csv(buffer, f"adufarms-analytics-{section}-{date.today().isoformat()}.csv")
 
 
 @app.route("/search/transaction/<transaction_id>")
@@ -3061,6 +3183,7 @@ def audit_logs():
         f"SELECT * FROM audit_log{where} ORDER BY id DESC LIMIT 1000", params
     ).fetchall()
     reversals = conn.execute("SELECT * FROM reversals ORDER BY id DESC LIMIT 100").fetchall()
+    activity = audit_service.build_activity(conn, request.args.get("range"), date.today(), request.args.get("from"), request.args.get("to"))
     conn.close()
     if request.args.get("format") == "csv":
         buffer = io.StringIO()
@@ -3068,14 +3191,10 @@ def audit_logs():
         writer.writerow(["Timestamp", "User", "Action", "Reference", "Details"])
         for row in rows:
             writer.writerow([row["created_at"], row["username"], row["action"], row["reference"], row["details"]])
-        return send_file(
-            io.BytesIO(buffer.getvalue().encode("utf-8-sig")),
-            as_attachment=True,
-            download_name=f"adufarms-audit-log-{date.today().isoformat()}.csv",
-            mimetype="text/csv",
-        )
+        return send_csv(buffer, f"adufarms-audit-log-{date.today().isoformat()}.csv")
     return render_template("audit_logs.html", rows=rows, reversals=reversals,
-                           query=query, action=action, start=start, end=end)
+                           query=query, action=action, start=start, end=end, ai=activity,
+                           insights_requested=any(k in request.args for k in ("range", "from", "to")))
 
 
 @app.route("/admin/audit-logs/delete", methods=["POST"])
@@ -3195,12 +3314,20 @@ def admin_restore():
 @require_permission("view_inventory")
 def stock():
     purchased, sold, available = stock_summary()
+    where, params, filters = inventory_service.movement_filters(request.args)
+    today_d = date.today()
     conn = db()
-    movements = conn.execute(
-        "SELECT * FROM stock_movements ORDER BY id DESC LIMIT 1000").fetchall()
-    low = available <= 100
+    try:
+        movements = conn.execute(f"SELECT * FROM stock_movements WHERE {where} ORDER BY movement_date DESC, id DESC LIMIT 1000", params).fetchall()
+        move_totals = conn.execute(f"SELECT COUNT(*) n, COALESCE(SUM(quantity_kg),0) net FROM stock_movements WHERE {where}", params).fetchone()
+        cogs = cogs_summary(conn)
+        analytics_data = inventory_service.build_inventory(
+            conn, request.args.get("range"), today_d, money, available, cogs["unit_cost"], LOW_STOCK_KG,
+            purchases_service.sales_pace(conn, today_d), request.args.get("from"), request.args.get("to"))
+    finally:
+        conn.close()
+    low = available <= LOW_STOCK_KG
     depleted = available <= 0
-    conn.close()
     if request.args.get("format") == "csv":
         buffer = io.StringIO()
         writer = csv.writer(buffer, lineterminator="\n")
@@ -3208,53 +3335,32 @@ def stock():
         for movement in movements:
             writer.writerow([movement["movement_date"], movement["movement_type"], movement["reference"],
                              movement["quantity_kg"], movement["created_by"], movement["notes"]])
-        return send_file(
-            io.BytesIO(buffer.getvalue().encode("utf-8-sig")),
-            as_attachment=True,
-            download_name=f"adufarms-stock-movements-{date.today().isoformat()}.csv",
-            mimetype="text/csv",
-        )
-    return render_template("stock.html", purchased=purchased, sold=sold,
-                           available=available, movements=movements,
-                           low=low, depleted=depleted)
+        return send_csv(buffer, f"adufarms-stock-movements-{date.today().isoformat()}.csv")
+    return render_template("stock.html", purchased=purchased, sold=sold, available=available, movements=movements,
+                           low=low, depleted=depleted, si=analytics_data, filters=filters, move_totals=move_totals,
+                           can_export=user_has_permission("export_reports"),
+                           analytics_requested=any(k in request.args for k in ("range", "from", "to")))
 
 
 @app.route("/notifications")
 @login_required
 def notifications():
-    conn = db()
-    purchased = conn.execute(
-        "SELECT COALESCE(SUM(quantity_received_kg),0) v FROM purchases WHERE deleted=0").fetchone()["v"]
-    sold = conn.execute(
-        "SELECT COALESCE(SUM(quantity_kg),0) v FROM sales WHERE deleted=0").fetchone()["v"]
-    stock = float(purchased) - float(sold)
-    unpaid_rows = conn.execute("""SELECT s.transaction_id, c.name customer_name,
-        s.total_sale - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.transaction_id=s.transaction_id AND p.deleted=0),0) balance
-        FROM sales s JOIN customers c ON c.id=s.customer_id WHERE s.deleted=0
-        AND COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.transaction_id=s.transaction_id AND p.deleted=0),0) < s.total_sale
-        ORDER BY s.id DESC LIMIT 20""").fetchall()
-    recent_audit = conn.execute(
-        "SELECT username, action, reference, created_at FROM audit_log ORDER BY id DESC LIMIT 15").fetchall()
-    conn.close()
-    items = []
-    if stock <= 0:
-        items.append({"kind": "danger", "icon": "box-seam", "title": "Stock depleted",
-                      "body": "No available maize stock remains.", "time": now()})
-    elif stock <= 100:
-        items.append({"kind": "warning", "icon": "exclamation-triangle", "title": "Low stock",
-                      "body": f"Only {stock:,.2f} KG remains.", "time": now()})
-    for r in unpaid_rows:
-        items.append({"kind": "warning", "icon": "hourglass-split",
-                      "title": f"Outstanding balance — {r['customer_name']}",
-                      "body": f"{r['transaction_id']} owes {money(r['balance'])}.", "time": now()})
-    for r in recent_audit:
-        items.append({"kind": "info", "icon": "activity",
-                      "title": f"{r['action'].title()} {r['reference'] or ''}".strip(),
-                      "body": f"by {r['username']} · {r['created_at']}", "time": r["created_at"]})
     if request.args.get("mark_read") == "1":
         session["notifications_read_at"] = now()
         return redirect(url_for("notifications"))
-    return render_template("notifications.html", items=items, stock=stock)
+    today_d = date.today()
+    can = {"inventory": user_has_permission("view_inventory"), "payments": user_has_permission("view_payments"),
+           "customers": user_has_permission("view_customers"), "sales": user_has_permission("view_sales"),
+           "audit": (session.get("role") or "").upper() == "ADMIN"}
+    conn = db()
+    try:
+        _, _, stock = stock_summary()
+        items = alerts_service.build_alerts(conn, today_d, money, stock, cogs_summary(conn)["unit_cost"], LOW_STOCK_KG,
+                                            purchases_service.sales_pace(conn, today_d), can)
+    finally:
+        conn.close()
+    counts = {kind: sum(1 for i in items if i["kind"] == kind) for kind in ("danger", "warning", "info")}
+    return render_template("notifications.html", items=items, stock=stock, counts=counts, read_at=session.get("notifications_read_at"))
 
 
 @app.route("/assistant", methods=["GET", "POST"])

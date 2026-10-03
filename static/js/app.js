@@ -320,7 +320,7 @@ document.addEventListener("DOMContentLoaded", function () {
 		if (!table) return;
 		let page = parseInt(card.dataset.page || "1", 10);
 		const per = 15;
-		const rows = Array.from(table.querySelectorAll("tbody tr")).filter(function (r) { return !r.hidden; });
+		const rows = Array.from(table.querySelectorAll("tbody tr")).filter(function (r) { return !r.hidden && !r.querySelector("td[colspan]"); });
 		const pages = Math.max(1, Math.ceil(rows.length / per));
 		if (page > pages) page = pages;
 		card.dataset.page = String(page);
@@ -328,7 +328,7 @@ document.addEventListener("DOMContentLoaded", function () {
 			r.style.display = (i >= (page - 1) * per && i < page * per) ? "" : "none";
 		});
 		const info = card.querySelector("[data-page-info]");
-		if (info) info.textContent = "Page " + page + " of " + pages + " · " + rows.length + " rows";
+		if (info) info.textContent = rows.length ? "Page " + page + " of " + pages + " · " + rows.length + (rows.length === 1 ? " row" : " rows") : "No records to show";
 	}
 	document.querySelectorAll(".card").forEach(function (card) {
 		if (!card.querySelector("table") || !card.querySelector("[data-page-next]")) return;
@@ -336,5 +336,34 @@ document.addEventListener("DOMContentLoaded", function () {
 		paginateCard(card);
 		card.querySelector("[data-page-next]").addEventListener("click", function () { card.dataset.page = String(parseInt(card.dataset.page, 10) + 1); paginateCard(card); });
 		card.querySelector("[data-page-prev]").addEventListener("click", function () { card.dataset.page = String(Math.max(1, parseInt(card.dataset.page, 10) - 1)); paginateCard(card); });
+	});
+
+	// Pin the Actions column of wide ledger tables so buttons stay reachable without sideways scrolling.
+	document.querySelectorAll(".table-responsive > table").forEach(function (table) {
+		var firstRow = table.querySelector("tbody tr");
+		var lastCell = firstRow && firstRow.lastElementChild;
+		var headCell = table.querySelector("thead tr:last-child th:last-child");
+		if (!lastCell || !headCell || !lastCell.querySelector(".btn, button, form")) { return; }
+		table.classList.add("has-sticky-actions");
+		headCell.classList.add("sticky-actions");
+		table.querySelectorAll("tbody tr").forEach(function (row) {
+			if (row.lastElementChild && row.children.length > 2) { row.lastElementChild.classList.add("sticky-actions"); }
+		});
+	});
+
+	// Label every cell with its column header so tables can reflow into cards on phones (see .table-cards in CSS).
+	document.querySelectorAll(".table-responsive > table").forEach(function (table) {
+		var heads = Array.from(table.querySelectorAll("thead tr:last-child th")).map(function (th) {
+			return th.textContent.replace(/[↕↑↓]/g, "").trim();
+		});
+		if (!heads.length) { return; }
+		table.classList.add("table-cards");
+		table.querySelectorAll("tbody tr").forEach(function (row) {
+			Array.from(row.children).forEach(function (cell, index) {
+				if (cell.hasAttribute("colspan")) { return; }
+				cell.setAttribute("data-label", heads[index] || "");
+				if (!heads[index] || heads[index] === "#") { cell.classList.add("card-cell-bare"); }
+			});
+		});
 	});
 });

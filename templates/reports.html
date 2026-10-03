@@ -9,6 +9,16 @@
 <a class="btn btn-outline-primary" href="{{ url_for('reports', start=start, end=end, format='csv', type='balances') }}">Balances</a>
 <button class="btn btn-outline-secondary" onclick="window.print()">Print</button>
 </div></div>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v='dx-12') }}">
+<nav class="dx-hub" aria-label="Deeper analytics">
+  <span class="dx-hub-label"><i class="bi bi-graph-up-arrow"></i> Go deeper</span>
+  {% if user_can('view_analytics') %}<a href="{{ url_for('analytics') }}"><i class="bi bi-heart-pulse"></i> Business health &amp; outlook</a>{% endif %}
+  {% if user_can('view_sales') %}<a href="{{ url_for('sales', range='90d') }}#analytics"><i class="bi bi-cart3"></i> Sales</a>{% endif %}
+  {% if user_can('view_purchases') %}<a href="{{ url_for('purchases', range='90d') }}#analytics"><i class="bi bi-box-seam"></i> Purchases</a>{% endif %}
+  {% if user_can('view_payments') %}<a href="{{ url_for('payments', range='90d') }}#analytics"><i class="bi bi-wallet2"></i> Collections</a>{% endif %}
+  {% if user_can('view_inventory') %}<a href="{{ url_for('stock', range='90d') }}#analytics"><i class="bi bi-boxes"></i> Inventory</a>{% endif %}
+  {% if user_can('view_customers') %}<a href="{{ url_for('customers') }}#insights"><i class="bi bi-people"></i> Customers</a>{% endif %}
+</nav>
 <div class="card mb-3"><div class="card-body"><form class="row g-3" method="get" action="{{ url_for('reports') }}"><div class="col-md-4"><label class="form-label" for="reportStart">From</label><input class="form-control" type="date" id="reportStart" name="start" value="{{ start }}"></div><div class="col-md-4"><label class="form-label" for="reportEnd">To</label><input class="form-control" type="date" id="reportEnd" name="end" value="{{ end }}"></div><div class="col-md-4 d-flex align-items-end gap-2"><button class="btn btn-primary" type="submit">Filter report</button><a class="btn btn-outline-secondary" href="{{ url_for('reports') }}">Reset</a></div></form></div></div>
 {% if summary %}
 <div class="row g-3 mb-3">

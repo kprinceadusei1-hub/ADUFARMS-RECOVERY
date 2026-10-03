@@ -24,8 +24,8 @@
 
   <div class="sidebar-section-label">Workspace</div>
   <nav class="sidebar-nav" aria-label="Main navigation">
-    {% set nav_items = [('dashboard','Dashboard','speedometer2'),('purchases','Purchases','box-seam'),('customers','Customers & Sales','people'),('stock','Stock & Inventory','boxes'),('payments','Payments','wallet2'),('invoice','Invoices','receipt'),('search','Search','search'),('reports','Reports','bar-chart-line'),('assistant','AI Assistant','stars')] %}
-    {% for endpoint, label, icon in nav_items %}
+    {% set nav_items = [('dashboard','Dashboard','speedometer2'),('purchases','Purchases','box-seam'),('customers','Customers & Sales','people'),('stock','Stock & Inventory','boxes'),('payments','Payments','wallet2'),('invoice','Invoices','receipt'),('search','Search','search'),('analytics','Analytics','graph-up-arrow'),('reports','Reports','bar-chart-line'),('assistant','AI Assistant','stars')] %}
+    {% for endpoint, label, icon in nav_items if endpoint != 'analytics' or user_can('view_analytics') %}
       {% set nav_active = request.endpoint == endpoint or (endpoint == 'customers' and request.endpoint == 'sales') %}
       {% if endpoint == 'purchases' %}<div class="sidebar-nav-divider" aria-hidden="true"></div>{% endif %}
       <a class="{% if nav_active %}active{% endif %}" href="{{ url_for(endpoint) }}" data-tip="{{ label }}"{% if nav_active %} aria-current="page"{% endif %} aria-label="{{ label }}">

@@ -77,9 +77,12 @@ def verify_database(db_path: str | Path) -> None:
         conn.close()
 
 
-def create_backup(db_path: str | Path) -> Path:
+def create_backup(db_path: str | Path, skip_if_unchanged: bool = False) -> Path:
     """Create timestamped backup. Never overwrites existing file (timestamp is unique;
-    if collision, append counter). Returns backup path."""
+    if collision, append counter). Returns backup path.
+
+    With skip_if_unchanged=True (used for the automatic start-up backup) nothing new is kept when the
+    data is byte-identical to the newest existing backup; that existing backup is returned instead."""
     src = Path(db_path)
     verify_database(src)
     base = f"adufarms_{timestamp()}.db"
@@ -120,8 +123,44 @@ def create_backup(db_path: str | Path) -> Path:
             dst.unlink()
         dst.with_suffix(".json").unlink(missing_ok=True)
         raise
+    if skip_if_unchanged:
+        previous = next((b for b in list_backups() if b != dst), None)
+        if previous is not None:
+            try:
+                if checksum(previous) == checksum(dst):
+                    dst.unlink(missing_ok=True)
+                    dst.with_suffix(".json").unlink(missing_ok=True)
+                    return previous
+            except OSError:
+                pass  # cannot compare: keep the new backup, which is always safe
     prune_backups()
     return dst
+
+
+def dedupe_backups(dry_run: bool = False) -> list[str]:
+    """Remove backups whose content is byte-identical to an older backup (keeps the oldest of each group).
+
+    Only automatic/manual snapshots named adufarms_*.db are considered; safety snapshots with other names
+    (pre_clear_*, pre_fresh_start_*, ...) are never touched. Returns the names that were (or would be) removed.
+    """
+    groups: dict[str, list[Path]] = {}
+    for path in sorted(BACKUP_DIR.glob("adufarms_*.db"), key=lambda p: p.stat().st_mtime):
+        groups.setdefault(checksum(path), []).append(path)
+    removed: list[str] = []
+    for paths in groups.values():
+        keep, extras = paths[0], paths[1:]
+        if not extras:
+            continue
+        try:
+            verify_database(keep)
+        except Exception:
+            continue  # never delete copies unless the one we keep is healthy
+        for extra in extras:
+            removed.append(extra.name)
+            if not dry_run:
+                extra.unlink(missing_ok=True)
+                extra.with_suffix(".json").unlink(missing_ok=True)
+    return removed
 
 
 def safe_restore(db_path: str | Path, backup_name: str) -> Path:

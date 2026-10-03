@@ -198,14 +198,12 @@ body.authenticated { overflow:hidden; }
 .card, .row, [class*="col-"] { min-width:0; max-width:100%; }
 .form-control, .form-select { max-width:100%; }
 body.sidebar-collapsed .app-sidebar { width:var(--sidebar-collapsed-width); min-width:var(--sidebar-collapsed-width); padding-left:12px; padding-right:12px; }
-body.sidebar-collapsed .app-main { margin-left:78px; }
 body.sidebar-collapsed .brand-copy, body.sidebar-collapsed .sidebar-label, body.sidebar-collapsed .sidebar-nav a .nav-label, body.sidebar-collapsed .sidebar-profile-copy, body.sidebar-collapsed .sidebar-profile-chevron, body.sidebar-collapsed .sidebar-logout span { display:none; }
 body.sidebar-collapsed .brand-lockup { justify-content:center; padding-left:0; padding-right:0; }.sidebar-collapse { margin-left:auto; }
 body.sidebar-collapsed .sidebar-brand-row { display:block; }.sidebar-brand-row .sidebar-collapse { display:grid; }.sidebar-collapsed .sidebar-collapse { margin:8px auto 0; }
 body.sidebar-collapsed .sidebar-nav a { justify-content:center; gap:0; padding-left:0; padding-right:0; }.sidebar-nav a[title] { position:relative; }
 body.sidebar-collapsed .sidebar-nav .nav-icon { width:30px; height:30px; flex-basis:30px; font-size:1.02rem; }
 body.sidebar-collapsed .nav-active-dot { display:none; }
-body.sidebar-collapsed .new-transaction-trigger { justify-content:center; padding-left:0; padding-right:0; }
 body.sidebar-collapsed .new-transaction-chevron { display:none; }
 body.sidebar-collapsed .sidebar-account { padding-top:12px; }
 body.sidebar-collapsed .sidebar-profile-card, body.sidebar-collapsed .sidebar-logout { justify-content:center; padding-left:0; padding-right:0; }
@@ -603,57 +601,6 @@ body {
     padding-right: 16px;
   }
 }
-@media (max-width: 800px) {
-  .app-sidebar {
-    width: 250px;
-    min-width: 250px;
-  }
-
-  .brand-lockup {
-    justify-content: flex-start;
-    padding-left: 8px;
-  }
-
-  .brand-lockup .brand-copy {
-    display: block;
-    margin-left: 10px;
-  }
-
-  .sidebar-nav a,
-  .new-transaction-trigger,
-  .sidebar-profile-card {
-    justify-content: flex-start;
-    padding-left: 12px;
-    padding-right: 12px;
-  }
-
-  .sidebar-nav a .nav-label,
-  .new-transaction-trigger .nav-label,
-  .sidebar-profile-copy,
-  .sidebar-profile-chevron,
-  .sidebar-logout span {
-    display: inline-flex !important;
-  }
-
-  .sidebar-nav a {
-    gap: 10px;
-  }
-
-  .sidebar-profile-card {
-    gap: 10px;
-  }
-}
-
-@media (max-width: 520px) {
-  .app-main {
-    margin-left: 0;
-  }
-
-  .main-content {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-}
 .stat-card .stat-value { letter-spacing:-.04em; }
 .panel-title h5 { letter-spacing:-.015em; }
 .table-responsive { border-radius:12px; }
@@ -910,11 +857,9 @@ body[data-theme="dark"] .quick-action-strip a { color:#f2d274; }
 
 /* Readable primary navigation: canonical widths via vars. */
 .app-sidebar { width:var(--sidebar-width); min-width:var(--sidebar-width); max-width:var(--sidebar-width); padding:24px 16px 18px; overflow-x:hidden; overflow-y:auto; }
-.app-main { margin-left:var(--sidebar-width); }
 .sidebar-nav { gap:5px; overflow:visible; }
 .sidebar-nav a { min-height:44px; gap:13px; padding:10px 13px; border:1px solid transparent; font-size:.82rem; letter-spacing:0; white-space:nowrap; }
 .sidebar-nav a i { width:22px; flex:0 0 22px; overflow:visible; opacity:1; color:#b9d8c1; font-size:1.05rem; text-align:center; transition:color .16s ease, transform .16s ease; }
-.sidebar-nav a .nav-label { display:block; min-width:0; max-width:none; overflow:visible; text-overflow:clip; white-space:nowrap; }
 .sidebar-nav a:hover { color:#fff; background:rgba(255,255,255,.1); border-color:rgba(255,255,255,.1); transform:translateX(3px); }
 .sidebar-nav a:hover i { color:#f1c85e; transform:scale(1.08); }
 .sidebar-nav a.active { color:#fff; background:rgba(217,157,33,.16); border-color:rgba(217,157,33,.28); box-shadow:inset 3px 0 var(--accent), 0 5px 14px rgba(0,0,0,.08); }
@@ -1430,3 +1375,66 @@ body.sidebar-collapsed .rail-expand:active { transform:scale(0.94); }
 #customersTable .badge-customer-type, #customersTable .badge-balance { font-size:.68rem; padding:3px 7px; }
 #customersTable .btn-sm { padding:4px 8px; font-size:.76rem; }
 #customersTable td.text-end { white-space:nowrap; }
+
+/* --- Readability: page hero text sits on photography and must always be light --- */
+.page-hero-copy h1 { color:#fff; text-shadow:0 2px 14px rgba(0,0,0,.45); letter-spacing:.01em; }
+.page-hero-copy .eyebrow { color:#f4d58a; text-shadow:0 1px 8px rgba(0,0,0,.4); }
+.page-hero-copy p { color:#f4faf5; }
+
+/* Dashboard tables live in narrow columns: fit them instead of hiding columns behind a scrollbar */
+.table-responsive > .table.dash-table { min-width:0; width:100%; font-size:.83rem; }
+.dash-table th, .dash-table td { padding-left:.45rem; padding-right:.45rem; }
+.dash-table .sales-id-pill, .dash-table .purchase-id-pill { white-space:nowrap; font-size:.68rem; padding-left:.4rem; padding-right:.4rem; }
+.dash-table td, .dash-table th { vertical-align:middle; }
+.dash-table td:last-child small, .dash-table td small { white-space:nowrap; }
+
+/* --- Ledger tables: single-line cells, pinned Actions column --- */
+.table-responsive > .table.sortable td, .table-responsive > .table.sortable th { white-space:nowrap; }
+.table-responsive > .table.sortable .customer-chip, .table-responsive > .table.sortable td.wrap-ok { white-space:normal; }
+.table-responsive > .table.sortable .customer-name-text, .table-responsive > .table.sortable .customer-chip strong { min-width:120px; display:inline-block; }
+.table-responsive > .table.sortable .sales-id-pill, .table-responsive > .table.sortable .purchase-id-pill,
+.table-responsive > .table.sortable .payment-id-pill, .table-responsive > .table.sortable .sales-link-pill { white-space:nowrap; }
+.table-responsive > .table.sortable { min-width:0; }
+.table-responsive .sticky-actions { position:sticky; right:0; z-index:2; background:var(--panel, #fff); box-shadow:-10px 0 12px -10px rgba(16,42,29,.28); }
+.table-responsive .table-hover > tbody > tr:hover > .sticky-actions { background:var(--panel-soft, #f6faf6); }
+
+/* Pinned action cells stay icon-only so they never cover the figures beside them */
+.sticky-actions .btn[data-bs-target="#deleteTransactionModal"]::after { content:none; }
+.sticky-actions .btn { padding:.25rem .5rem; }
+.sticky-actions .btn-group, .sticky-actions form { flex-wrap:nowrap; }
+.table-responsive > .table.sortable td, .table-responsive > .table.sortable th { padding-left:.55rem; padding-right:.55rem; }
+
+/* Dark theme: make Bootstrap's default text colour follow the theme so small legends/labels stay readable */
+body[data-theme="dark"] { --bs-body-color:var(--text); --bs-secondary-color:var(--muted-text); --bs-emphasis-color:var(--text); }
+body[data-theme="dark"] .card .small, body[data-theme="dark"] .card small { color:inherit; }
+body[data-theme="dark"] .text-muted { color:var(--muted-text) !important; }
+body[data-theme="dark"] .text-dark { color:var(--text) !important; }
+@media (max-width: 768px) {
+  .table-responsive .sticky-actions { position:static; box-shadow:none; background:transparent; }
+}
+.statement-table td, .statement-table th { white-space:nowrap; vertical-align:middle; }
+
+/* --- Phones: turn data tables into readable cards --- */
+@media (max-width: 640px) {
+  .table-responsive { overflow-x:visible; border:0 !important; }
+  .table-responsive > .table.table-cards, .table-responsive > .table.table-cards tbody { display:block; width:100%; min-width:0 !important; }
+  .table-cards thead { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+  .table-cards tbody tr { display:block; margin:0 0 12px; padding:6px 12px; border:1px solid var(--border, #dce6df); border-radius:12px; background:var(--panel, #fff); box-shadow:0 2px 8px rgba(16,42,29,.06); }
+  .table-cards tbody tr.customer-row-accent { border-left-width:4px; }
+  .table-cards tbody td { display:flex; justify-content:space-between; align-items:center; gap:14px; width:auto !important; padding:8px 0 !important; border:0; border-bottom:1px dashed var(--border, #e3ece6); white-space:normal !important; text-align:right !important; }
+  .table-cards tbody td:last-child { border-bottom:0; }
+  .table-cards tbody td[data-label]::before { content:attr(data-label); flex:0 0 38%; text-align:left; font-size:.68rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted-text, #52665b); }
+  .table-cards tbody td.card-cell-bare::before { content:none; }
+  .table-cards tbody td.card-cell-bare:not(.sticky-actions) { display:none; }
+  .table-cards tbody td.sticky-actions { justify-content:flex-end; flex-wrap:wrap; padding-top:12px !important; }
+  .table-cards tbody td[colspan] { display:block; text-align:center !important; }
+  .table-cards .customer-chip, .table-cards .btn-group, .table-cards form { justify-content:flex-end; }
+  .table-cards .sales-id-pill, .table-cards .purchase-id-pill, .table-cards .payment-id-pill { max-width:100%; }
+}
+@media (max-width: 640px) { .table-cards tbody td.sticky-actions::before { content:none; } .table-cards tbody td.sticky-actions { border-top:1px solid var(--border, #e3ece6); } }
+@media (max-width: 640px) {
+  .table-cards tbody td { flex-wrap:wrap; }
+  .table-cards tbody td small { flex:0 0 100%; text-align:right; white-space:normal !important; }
+  .table-cards tbody tr.customer-row-accent > td:first-child { padding-left:10px !important; }
+  .table-cards tbody td::after { content:none; }
+}

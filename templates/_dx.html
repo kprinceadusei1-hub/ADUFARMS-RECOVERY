@@ -1,0 +1,60 @@
+{# Shared dashboard-style building blocks. Usage: {% from "_dx.html" import chip, stat %} #}
+{% macro chip(delta, good_up=True) -%}
+{% if delta %}{% set good = (delta.direction == 'up') == good_up %}
+<span class="dx-chip {{ 'dx-chip-flat' if delta.direction == 'flat' else ('dx-chip-good' if good else 'dx-chip-bad') }}" title="Change versus the previous period">
+  <i class="bi bi-{{ 'arrow-up-right' if delta.direction == 'up' else 'arrow-down-right' if delta.direction == 'down' else 'dash' }}"></i>{{ delta.pct|round(1) }}%</span>{% endif %}
+{%- endmacro %}
+
+{% macro stat(tone, icon, label, value, note, delta=None, good_up=True, spark=None) -%}
+<article class="dx-kpi dx-tone-{{ tone }}">
+  <header><span class="dx-kpi-icon"><i class="bi bi-{{ icon }}"></i></span><span class="dx-kpi-label">{{ label }}</span>{{ chip(delta, good_up) }}</header>
+  <div class="dx-kpi-value">{{ value }}</div>
+  <footer>
+    <span class="dx-kpi-note">{{ note }}</span>
+    {% if spark %}<svg class="dx-spark" data-spark="{{ spark|join(',') }}" viewBox="0 0 96 28" preserveAspectRatio="none" aria-hidden="true"></svg>{% endif %}
+  </footer>
+</article>
+{%- endmacro %}
+
+{# Page header with period picker. `p` is any analytics dict carrying period_meta() fields. Import `with context`.
+   Put extra buttons (export, print) inside {% call period_header(...) %}...{% endcall %}. #}
+{% macro period_header(p, endpoint, title, subtitle, anchor='') -%}
+<section class="dx-header">
+  <div class="dx-header-copy">
+    <span class="dx-eyebrow"><i class="bi bi-calendar3"></i> {{ p.period_text }}{% if p.compare_text %} <em>· {{ p.compare_text }}</em>{% endif %}</span>
+    <h2>{{ title }}</h2>
+    <p>{{ subtitle }}</p>
+  </div>
+  <div class="dx-header-actions no-print">
+    <div class="dx-range" role="tablist" aria-label="Reporting period">
+      {% for key, label in p.ranges %}<a href="{{ url_for(endpoint, range=key) }}{{ anchor }}" class="{{ 'active' if key == p.range_key }}" role="tab">{{ label }}</a>{% endfor %}
+      {% if p.range_key == 'custom' %}<a class="active" role="tab" href="{{ anchor or '#' }}">Custom</a>{% endif %}
+    </div>
+    <form class="dx-custom" method="get" action="{{ url_for(endpoint) }}{{ anchor }}">
+      <label>From <input type="date" name="from" value="{{ p.date_from }}" max="{{ p.max_date }}" required></label>
+      <label>To <input type="date" name="to" value="{{ p.date_to }}" max="{{ p.max_date }}" required></label>
+      <button class="dx-btn" type="submit"><i class="bi bi-funnel"></i> Apply</button>
+    </form>
+    {% if caller %}<div class="dx-quick">{{ caller() }}</div>{% endif %}
+  </div>
+</section>
+{%- endmacro %}
+
+{% macro insights(items, empty_text='Insights appear as you record more activity.') -%}
+<ul class="dx-insights">
+  {% for i in items %}
+  <li class="dx-insight dx-insight-{{ i.level }}"><span class="dx-insight-icon"><i class="bi bi-{{ i.icon }}"></i></span>
+    <div><strong>{% if i.href %}<a href="{{ url_for(i.href) }}">{{ i.title }}</a>{% else %}{{ i.title }}{% endif %}</strong><small>{{ i.text }}</small></div></li>
+  {% else %}<li class="dx-empty"><i class="bi bi-lightbulb"></i> {{ empty_text }}</li>{% endfor %}
+</ul>
+{%- endmacro %}
+
+{# tabs: list of (key, icon, label, badge) ; first one is the default #}
+{% macro tab_bar(items, alert='') -%}
+<div class="dx-tabs" role="tablist">
+  {% for key, icon, label, badge in items %}
+  <button type="button" class="dx-tab{{ ' active' if loop.first }}" data-tab="{{ key }}" role="tab"><i class="bi bi-{{ icon }}"></i> {{ label }}{% if badge is not none %} <span class="dx-count">{{ badge }}</span>{% endif %}</button>
+  {% endfor %}
+  {% if alert %}<span class="dx-alert"><i class="bi bi-exclamation-circle"></i> {{ alert }}</span>{% endif %}
+</div>
+{%- endmacro %}

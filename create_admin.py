@@ -1,65 +1,79 @@
+"""Provision ADUFARMS role accounts.
+
+Safe by default:
+  * passwords come from environment variables, or are generated randomly
+    (and shown once) - there are no well-known default passwords;
+  * existing accounts are left untouched unless --reset is passed.
+
+    python create_admin.py            # create any missing accounts
+    python create_admin.py --reset    # also reset passwords of existing accounts
+
+Set ADUFARMS_ADMIN_PASSWORD, ADUFARMS_MANAGER_PASSWORD, ... to choose passwords yourself.
+Honours DATABASE_PATH / ADUFARMS_DB_PATH like the main application.
+"""
 import os
+import secrets
 import sqlite3
+import string
+import sys
 from datetime import datetime
+from pathlib import Path
 
 from werkzeug.security import generate_password_hash
 
-BASE_USERS = {
-    "admin": {
-        "full_name": os.environ.get("ADUFARMS_ADMIN_FULL_NAME", "Business Administrator"),
-        "password": os.environ.get("ADUFARMS_ADMIN_PASSWORD", "Admin@2026!"),
-        "role": "ADMIN",
-    },
-    "manager": {
-        "full_name": "Operations Manager",
-        "password": os.environ.get("ADUFARMS_MANAGER_PASSWORD", "Manager@2026!"),
-        "role": "MANAGER",
-    },
-    "sales": {
-        "full_name": "Sales Officer",
-        "password": os.environ.get("ADUFARMS_SALES_PASSWORD", "Sales@2026!"),
-        "role": "SALES_OFFICER",
-    },
-    "inventory": {
-        "full_name": "Inventory Officer",
-        "password": os.environ.get("ADUFARMS_INVENTORY_PASSWORD", "Inventory@2026!"),
-        "role": "INVENTORY_OFFICER",
-    },
-    "accounts": {
-        "full_name": "Accountant",
-        "password": os.environ.get("ADUFARMS_ACCOUNTANT_PASSWORD", "Accounts@2026!"),
-        "role": "ACCOUNTANT",
-    },
-}
+BASE_DIR = Path(__file__).resolve().parent
+DB_PATH = Path(os.environ.get("DATABASE_PATH") or os.environ.get("ADUFARMS_DB_PATH") or BASE_DIR / "adufarms.db")
 
-conn = sqlite3.connect("adufarms.db")
-for username, config in BASE_USERS.items():
-    password = str(config["password"]).strip() or f"{username.title()}@2026!"
-    conn.execute(
-        """
-        INSERT INTO users
-        (username, full_name, password_hash, role, active, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(username) DO UPDATE SET
-            full_name = excluded.full_name,
-            password_hash = excluded.password_hash,
-            role = excluded.role,
-            active = excluded.active,
-            last_login = NULL,
-            failed_login_attempts = 0,
-            locked_until = NULL
-        """,
-        (
-            username,
-            config["full_name"].strip() or username.title(),
-            generate_password_hash(password),
-            config["role"],
-            1,
-            datetime.now().isoformat(timespec="seconds"),
-        ),
-    )
-    print(f"{username}: {password} | {config['role']}")
+ACCOUNTS = [
+    ("admin", "Business Administrator", "ADMIN", "ADUFARMS_ADMIN_PASSWORD"),
+    ("manager", "Operations Manager", "MANAGER", "ADUFARMS_MANAGER_PASSWORD"),
+    ("sales", "Sales Officer", "SALES_OFFICER", "ADUFARMS_SALES_PASSWORD"),
+    ("inventory", "Inventory Officer", "INVENTORY_OFFICER", "ADUFARMS_INVENTORY_PASSWORD"),
+    ("accounts", "Accountant", "ACCOUNTANT", "ADUFARMS_ACCOUNTANT_PASSWORD"),
+]
 
-conn.commit()
-conn.close()
-print("Business accounts ready.")
+
+def random_password(length=16):
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+    while True:
+        candidate = "".join(secrets.choice(alphabet) for _ in range(length))
+        if (any(c.islower() for c in candidate) and any(c.isupper() for c in candidate)
+                and any(c.isdigit() for c in candidate) and any(c in "!@#$%^&*" for c in candidate)):
+            return candidate
+
+
+def main(reset=False):
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        for username, full_name, role, env_var in ACCOUNTS:
+            exists = conn.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone()
+            if exists and not reset:
+                print(f"{username}: already exists - left unchanged")
+                continue
+            supplied = os.environ.get(env_var, "").strip()
+            password = supplied or random_password()
+            conn.execute(
+                """
+                INSERT INTO users (username, full_name, password_hash, role, active, created_at)
+                VALUES (?, ?, ?, ?, 1, ?)
+                ON CONFLICT(username) DO UPDATE SET
+                    full_name = excluded.full_name,
+                    password_hash = excluded.password_hash,
+                    role = excluded.role,
+                    active = 1,
+                    failed_login_attempts = 0,
+                    locked_until = NULL
+                """,
+                (username, full_name, generate_password_hash(password), role,
+                 datetime.now().isoformat(timespec="seconds")),
+            )
+            shown = "(from " + env_var + ")" if supplied else password
+            print(f"{username} [{role}]: {shown}")
+        conn.commit()
+    finally:
+        conn.close()
+    print("\nStore any generated passwords now - they are not saved anywhere.")
+
+
+if __name__ == "__main__":
+    main(reset="--reset" in sys.argv)
